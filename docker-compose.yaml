@@ -5,6 +5,7 @@ services:
       - "5000:5000"
     environment:
       - MONGODB_CONNSTRING=mongodb://CongenialCarnival:CongenialCarnival@mongodb
+      - EXPRESS_SERVER_PORT=5000
   mongodb:
     image: mongo:5.0
     volumes: 
