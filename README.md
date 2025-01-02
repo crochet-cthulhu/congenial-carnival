@@ -66,7 +66,8 @@ Response: JSON formatted track data:
 Creates a new playlist on the User's account with the specified track data. Currently set up to format the playlist with data from the /get-most-played endpoint.
 
 Request:
-- `length`: `"short_term"`, `"medium_term"` or `"long_term"`
+- `name`: The name of the new playlist.
+- `description`: (Optional) The description of the new playlist. If not provided, a default one will be used.
 - `access_token`: Access Token from /callback 
 - `songList` : `string[]` of Spotify Track URI's to add to Playlist
 
