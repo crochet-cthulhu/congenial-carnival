@@ -9,4 +9,4 @@ RUN yarn install
 RUN yarn cache clean
 COPY . .
 
-CMD [ "yarn", "start" ]
+CMD [ "yarn", "run", "dev" ]
