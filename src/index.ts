@@ -176,13 +176,6 @@ expressApp.get('/auth/get-spotify-tokens', function (req, res) {
       }
     }).then(function (response) {
       console.log("Received response to token request")
-      console.log({
-        'data': response.data,
-        'status': response.status,
-        'statusText': response.statusText,
-        'headers': response.headers,
-        'config': response.config
-      })
       axios({
         url: 'https://api.spotify.com/v1/me',
         method: 'get',
@@ -191,7 +184,6 @@ expressApp.get('/auth/get-spotify-tokens', function (req, res) {
         }
       }).then(function (response) {
         console.log("Recieved response to user data request")
-        console.log(response)
       })
 
       console.log("Sending tokens as response to /callback/")
@@ -236,11 +228,9 @@ expressApp.get('/get-most-played', function (req, res) {
     }
   }).then(function (response) {
     console.log("GET Response ", response.status);
-    console.log("Successfully retrieved tracks")
     const numTracks: number = response.data.items.length;
     const trackList: Types.trackData[] = [];
     for (let trackNum = 0; trackNum < numTracks; trackNum++) {
-      console.log("Up to Track Num ", trackNum);
       const track: Types.trackData = {
         uri: response.data.items[trackNum].uri,
         name: response.data.items[trackNum].name,
@@ -248,7 +238,6 @@ expressApp.get('/get-most-played', function (req, res) {
       };
       trackList.push(track);
     }
-    console.log(trackList);
     res.send({
       trackData: trackList
     });
@@ -280,11 +269,9 @@ expressApp.get('/get-other-user-playlists', function (req, res) {
     }
   }).then(function (response) {
     console.log("GET Response ", response.status);
-    console.log("Successfully retrieved playlists")
     const numPlaylists: number = response.data.items.length;
     const playlistList: Types.playlistData[] = [];
     for (let playlistNum = 0; playlistNum < numPlaylists; playlistNum++) {
-      console.log("Up to Playlist Num ", playlistNum);
       const playlist: Types.playlistData = {
         uri: response.data.items[playlistNum].uri,
         name: response.data.items[playlistNum].name,
@@ -292,7 +279,6 @@ expressApp.get('/get-other-user-playlists', function (req, res) {
       };
       playlistList.push(playlist);
     }
-    console.log(playlistList);
     res.send({
       playlistData: playlistList
     });
@@ -318,10 +304,9 @@ expressApp.get('/get-user-playlists', function (req, res) {
   const finalPlaylistList: Types.playlistData[] = [];
 
   const playlistPromise = new Promise<boolean>((resolve) => {
-    console.log("Executing Playlist Promise");
     let offset = 0;
     const getDataFromAPI = () => {
-      console.log("Entered getDataFromAPI with offset ", offset);
+      console.log("Retrieving playlists with offset ", offset);
 
       const getData = new Promise<boolean>((resolve, reject) => {
         const requestParams = new URLSearchParams({
@@ -338,7 +323,6 @@ expressApp.get('/get-user-playlists', function (req, res) {
           }
         }).then(function (response) {
           console.log("GET Response ", response.status);
-          console.log("Successfully retrieved playlists");
           const numPlaylists: number = response.data.items.length;
 
           for (let playlistNum = 0; playlistNum < numPlaylists; playlistNum++) {
@@ -449,9 +433,7 @@ expressApp.get('/create-playlist',
         playlistID = response.data.id
 
         // Add songs to this new playlist
-        console.log("User ID: " + userID);
         console.log("Playlist ID: " + playlistID)
-        console.log("Song List: " + songList)
 
         axios({
           url: 'https://api.spotify.com/v1/playlists/' + playlistID + '/tracks?uris=' + songList,
