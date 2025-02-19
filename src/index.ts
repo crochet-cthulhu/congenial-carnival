@@ -6,7 +6,8 @@ import axios, { AxiosError } from 'axios';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import express from 'express';
-import { query, validationResult } from 'express-validator'
+// TODO Re-add validator
+//import { query, validationResult } from 'express-validator'
 import { MongoClient } from 'mongodb';
 import * as Types from './types';
 
@@ -433,7 +434,7 @@ expressApp.post('/create-playlist', (req, res) => {
       }).then(function (response) {
         console.log("POST Response: ", response.status);
         console.log("Successfully added songs to Playlist " + playlistID)
-        res.send({
+        res.json({
           successful: true,
           playlistID: playlistID
         })
