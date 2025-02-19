@@ -6,7 +6,8 @@ import axios, { AxiosError } from 'axios';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import express from 'express';
-import { query, validationResult } from 'express-validator'
+// TODO Re-add validator
+//import { query, validationResult } from 'express-validator'
 import { MongoClient } from 'mongodb';
 import * as Types from './types';
 
@@ -16,6 +17,7 @@ dotenv.config();
 // Express App Config
 const expressApp = express();
 expressApp.use(cors());
+expressApp.use(express.json());
 const stateKey = 'spotify_auth_state';
 const port = process.env.EXPRESS_SERVER_PORT || 5050;
 // const redirectURI = 'http://localhost:3000/app/callback';
@@ -140,7 +142,6 @@ expressApp.get('/auth/get-spotify-login-url', function (req, res) {
  * Express API Endpoint /auth/get-spotify-tokens
  */
 expressApp.get('/auth/get-spotify-tokens', function (req, res) {
-  console.log("Requesting Tokens")
   // Request refresh and access tokens after checking the state parameter
   const authorizationCode = req.query.code || null;
   const state = req.query.state || null;
@@ -149,7 +150,6 @@ expressApp.get('/auth/get-spotify-tokens', function (req, res) {
   // TODO Figure out how to use state properly  
   if (state == null) {
     // TODO Later: Figure out the best way to check state
-    console.log('ERR: No State')
     const errorParams = new URLSearchParams({
       error: 'state_mismatch'
     }).toString();
@@ -175,18 +175,14 @@ expressApp.get('/auth/get-spotify-tokens', function (req, res) {
         password: process.env.CLIENT_SECRET
       }
     }).then(function (response) {
-      console.log("Received response to token request")
       axios({
         url: 'https://api.spotify.com/v1/me',
         method: 'get',
         headers: {
           'Authorization': 'Bearer ' + response.data.access_token
         }
-      }).then(function (response) {
-        console.log("Recieved response to user data request")
       })
 
-      console.log("Sending tokens as response to /callback/")
       res.json({
         access_token: response.data.access_token,
         refresh_token: response.data.refresh_token
@@ -375,103 +371,95 @@ expressApp.get('/get-user-playlists', function (req, res) {
 /**
  * Express API Endpoint /create-playlist
  */
-expressApp.get('/create-playlist',
-  query("name").notEmpty().isString(),
-  query("description").isString(),
-  query("access_token").notEmpty().isString(),
-  query("songList").notEmpty().isArray(),
-  (req, res) => {
-    const result = validationResult(req);
-    if (!result.isEmpty()) {
-      res.send({ errors: result.array() });
-      return;
+expressApp.post('/create-playlist', (req, res) => {
+  // TODO complete
+  console.log("Reached create-playlist via POST");
+  const {name: playlistName, description: playlistDescription, access_token, songList} = req.body;
+
+  if (!playlistName || !access_token || !songList) {
+    res.status(400).send({error: "Missing Parameters"});
+    return;
+  }
+
+  console.log("Name: ", playlistName);
+  console.log("Description: ", playlistDescription);
+  console.log("Access Token: ", access_token);
+  console.log("Song List: ", songList);
+
+  let playlistID = "UNPOPULATED"
+
+  // Get User's ID
+  axios({
+    url: 'https://api.spotify.com/v1/me',
+    method: 'get',
+    headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + access_token
     }
+  }).then(function (response) {
+    console.log("GET Response ", response.status);
+    const userID: string = response.data.id;
+    console.log("Obtained User ID: " + userID);
 
-    let playlistID = "UNPOPULATED"
-    console.log("Making a playlist")
-
-    // Lets make the bold assumption that making a new playlist
-    // will overwrite an old one by the same name. Or at least
-    // not break things
-
-    // TODO handle missing parameters
-    const playlistName: string = req.query.name as string
-    const playlistDescription: string = req.query.description as string || "Made with congenial-carnival"
-    const access_token: string = req.query.access_token as string
-    const songList: string[] = req.query.songList as string[]
-
-    // Get User's ID
     axios({
-      url: 'https://api.spotify.com/v1/me',
-      method: 'get',
+      url: 'https://api.spotify.com/v1/users/' + userID + '/playlists',
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + access_token
+      },
+      method: 'post',
+      data: {
+        name: playlistName,
+        public: false,
+        collaborative: false,
+        description: playlistDescription
       }
     }).then(function (response) {
-      console.log("GET Response ", response.status);
-      const userID: string = response.data.id;
-      console.log("Obtained User ID: " + userID);
+      console.log("POST Response ", response.status);
+      playlistID = response.data.id
+
+      // Add songs to this new playlist
+      console.log("Playlist ID: " + playlistID)
 
       axios({
-        url: 'https://api.spotify.com/v1/users/' + userID + '/playlists',
+        url: 'https://api.spotify.com/v1/playlists/' + playlistID + '/tracks?uris=' + songList,
+        method: "post",
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
           'Authorization': 'Bearer ' + access_token
-        },
-        method: 'post',
-        data: {
-          name: playlistName,
-          public: false,
-          collaborative: false,
-          description: playlistDescription
         }
       }).then(function (response) {
-        console.log("POST Response ", response.status);
-        playlistID = response.data.id
+        console.log("POST Response: ", response.status);
+        console.log("Successfully added songs to Playlist " + playlistID)
+        res.json({
+          successful: true,
+          playlistID: playlistID
+        })
 
-        // Add songs to this new playlist
-        console.log("Playlist ID: " + playlistID)
-
-        axios({
-          url: 'https://api.spotify.com/v1/playlists/' + playlistID + '/tracks?uris=' + songList,
-          method: "post",
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + access_token
-          }
-        }).then(function (response) {
-          console.log("POST Response: ", response.status);
-          console.log("Successfully added songs to Playlist " + playlistID)
-          res.send({
-            successful: true,
-            playlistID: playlistID
-          })
-
-          sampleDatabaseEvent("create-playlist endpoint passed for playlist " + playlistName).catch(() => {
-            console.log("Failed DB entry at create-playlist " + playlistName)
-          });
-
-        }).catch(function (error) {
-          // Playlist Update Failed
-          handleAxiosError(error);
-          res.json({
-            successful: false,
-            playlistID: playlistID
-          });
+        sampleDatabaseEvent("create-playlist endpoint passed for playlist " + playlistName).catch(() => {
+          console.log("Failed DB entry at create-playlist " + playlistName)
         });
+
       }).catch(function (error) {
-        // Playlist Creation Failed
+        // Playlist Update Failed
         handleAxiosError(error);
+        res.json({
+          successful: false,
+          playlistID: playlistID
+        });
       });
     }).catch(function (error) {
-      // User ID Get Failed
+      // Playlist Creation Failed
       handleAxiosError(error);
     });
+  }).catch(function (error) {
+    // User ID Get Failed
+    handleAxiosError(error);
   });
+});
 
 /**
  * Express API Endpoint 'Any Other Request'

@@ -16,10 +16,13 @@ The Yarn/NPM scripts available to run for this package are:
 - `start`: Run the Node.js Application
 
 ## API Endpoints
-### /auth/spotify
+### /auth/get-spotify-login-url
 Provides the client with the URL required to authenticate the user's Spotify account.
 
-Request: No Request parameters required
+HTTP Type: `GET`
+
+Request:
+- `redirectURI`: When the authentication succeeds, redirect the user to this URL.
 
 Response: JSON formatted URL:
 ```
@@ -28,12 +31,15 @@ Response: JSON formatted URL:
 }
 ```
 
-### /callback
-Callback endpoint for obtaining access tokens after logging in
+### /auth/get-spotify-tokens
+Callback endpoint for obtaining Spotify API access tokens after logging in
+
+HTTP Type: `GET`
 
 Request: 
 - `code`: authorization token required to receive refresh tokens
 - `state`: parameter used to verify consistency of connections
+- `redirectURI`: When the authentication succeeds, redirect the user to this URL
 
 Response: JSON formatted Tokens:
 ```
@@ -46,6 +52,8 @@ Response: JSON formatted Tokens:
 ### /get-most-played
 Gets user's Spotify most played songs
 
+HTTP Type: `GET`
+
 Request:
 
 - `length`: `"short_term"`, `"medium_term"` or `"long_term"`
@@ -54,16 +62,29 @@ Request:
 Response: JSON formatted track data:
 ```
 {
-    trackData : trackData {
-        uri : string,
-        name : string,
-        artists : string[]
-    }
+    trackData : [
+      {
+         uri : string,
+         name : string,
+         artists : string[]
+      }
+    ]
 }
 ```
 
+### /get-other-user-playlists
+
+TODO
+
+### /get-user-playlists
+
+TODO
+
+
 ### /create-playlist
 Creates a new playlist on the User's account with the specified track data. Currently set up to format the playlist with data from the /get-most-played endpoint.
+
+HTTP Type: `POST`
 
 Request:
 - `name`: The name of the new playlist.
