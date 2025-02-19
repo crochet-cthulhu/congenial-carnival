@@ -446,7 +446,7 @@ expressApp.get('/get-playlist-tracks', function (req, res) {
       console.log("Failed DB entry at get-playlist-tracks")
     });
   });
-}
+});
 
 /**
  * Express API Endpoint /create-playlist
