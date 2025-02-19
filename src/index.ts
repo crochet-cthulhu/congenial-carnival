@@ -289,163 +289,118 @@ expressApp.get('/get-other-user-playlists', function (req, res) {
 });
 
 /**
- * Get current user's playlists
+ * Helper function to fetch data from Spotify API with pagination
+ * @param url The base URL for the Spotify API endpoint
+ * @param accessToken The access token for Spotify API
+ * @param limit The number of items to fetch per request
+ * @param processItems A callback function to process the items from each response
+ * @returns A promise that resolves when all data has been fetched
  */
-expressApp.get('/get-user-playlists', function (req, res) {
-  console.log("Getting playlists of user")
+async function fetchDataFromSpotify<T>(
+  url: string,
+  accessToken: string,
+  limit: number,
+  processItems: (items: T[]) => void
+): Promise<void> {
+  let offset = 0;
+  let hasMoreData = true;
 
-  const access_token: string = req.query.access_token as string
-  const limit = 50;
+  while (hasMoreData) {
+    const requestParams = new URLSearchParams({
+      limit: String(limit),
+      offset: String(offset)
+    });
 
-  const finalPlaylistList: Types.playlistData[] = [];
+    const requestUrl = `${url}?${requestParams}`;
 
-  const playlistPromise = new Promise<boolean>((resolve) => {
-    let offset = 0;
-    const getDataFromAPI = () => {
-      console.log("Retrieving playlists with offset ", offset);
-
-      const getData = new Promise<boolean>((resolve, reject) => {
-        const requestParams = new URLSearchParams({
-          limit: String(limit),
-          offset: String(offset)
-        });
-
-        axios({
-          url: 'https://api.spotify.com/v1/me/playlists?' + requestParams,
-          method: 'get',
-          headers: {
-            'Authorization': 'Bearer ' + access_token,
-            'Content-Type': 'application/json'
-          }
-        }).then(function (response) {
-          console.log("GET Response ", response.status);
-          const numPlaylists: number = response.data.items.length;
-
-          for (let playlistNum = 0; playlistNum < numPlaylists; playlistNum++) {
-            const playlist: Types.playlistData = {
-              uri: response.data.items[playlistNum].uri,
-              name: response.data.items[playlistNum].name,
-              ownerName: /*response.data.items[playlistNum].owner.??.display_name*/"UNCLEAR"
-            };
-            finalPlaylistList.push(playlist);
-          }
-          if (response.data.next === null) {
-            console.log("No Next Link");
-            resolve(false); // resolve getData
-          } else {
-            console.log("More data to get...");
-            resolve(true); // resolve getData
-          }
-
-        }).catch(function (error) {
-          handleAxiosError(error)
-          reject(error);
-        });
-      });
-      getData.then((moreData) => {
-        if (moreData) {
-          offset += limit;
-          console.log("Recalling ", offset)
-          getDataFromAPI()
-        } else {
-          console.log("Finished")
-          resolve(true); // resolve playlistPromise
+    try {
+      const response = await axios({
+        url: requestUrl,
+        method: 'get',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
         }
       });
-    }
-    getDataFromAPI();
-  });
 
-  playlistPromise.then(() => {
-    console.log("Promised Resolved")
+      const items: T[] = response.data.items;
+      processItems(items);
+
+      if (response.data.next === null) {
+        hasMoreData = false;
+      } else {
+        offset += limit;
+      }
+    } catch (error) {
+      handleAxiosError(error);
+      throw error;
+    }
+  }
+}
+
+/**
+ * Get current user's playlists
+ */
+expressApp.get('/get-user-playlists', async (req, res) => {
+  console.log("Getting playlists of user");
+
+  const access_token: string = req.query.access_token as string;
+  const limit = 50;
+  const finalPlaylistList: Types.playlistData[] = [];
+
+  try {
+    await fetchDataFromSpotify<Types.playlistData>(
+      'https://api.spotify.com/v1/me/playlists',
+      access_token,
+      limit,
+      (items) => {
+        finalPlaylistList.push(...items);
+      }
+    );
+
     res.send({
       playlistData: finalPlaylistList
     });
 
-    sampleDatabaseEvent("get-most-played endpoint passed").catch(() => {
-      console.log("Failed DB entry at get-user-playlists")
+    sampleDatabaseEvent("get-user-playlists endpoint passed").catch(() => {
+      console.log("Failed DB entry at get-user-playlists");
     });
-  });
+  } catch (error) {
+    res.status(500).send({ error: "Failed to fetch user playlists" });
+  }
 });
 
 /**
  * Express API Endpoint /get-playlist-tracks
  */
-expressApp.get('/get-playlist-tracks', function (req, res) {
-  console.log("Getting playlist tracks")
+expressApp.get('/get-playlist-tracks', async (req, res) => {
+  console.log("Getting playlist tracks");
 
-  const access_token: string = req.query.access_token as string
-  const playlistID: string = req.query.playlistID as string
+  const access_token: string = req.query.access_token as string;
+  const playlistID: string = req.query.playlistID as string;
   const limit = 50;
-
   const finalTrackList: Types.trackData[] = [];
 
-  const trackListPromise = new Promise<boolean>((resolve) => {
-    let offset = 0;
-    const getDataFromApi = () => {
-      console.log("Retrieving playlist tracks with offset ", offset);
+  try {
+    await fetchDataFromSpotify<Types.trackData>(
+      `https://api.spotify.com/v1/playlists/${playlistID}/tracks`,
+      access_token,
+      limit,
+      (items) => {
+        finalTrackList.push(...items);
+      }
+    );
 
-      const getData = new Promise<boolean>((resolve, reject) => {
-        const requestParams = new URLSearchParams({
-          limit: String(limit),
-          offset: String(offset)
-        });
-        const requestUrl: string = 'https://api.spotify.com/v1/playlists/' + playlistID + '/tracks?' + requestParams;
-        axios({
-          url: requestUrl,
-          method: 'get',
-          headers: {
-            'Authorization': 'Bearer ' + access_token,
-            'Content-Type': 'application/json'
-          }
-        }).then(function (response) {
-          console.log("GET Response ", response.status);
-          const numTracks: number = response.data.items.length;
-
-          for (let trackNum = 0; trackNum < numTracks; trackNum++) {
-            const track: Types.trackData = {
-              uri: response.data.items[trackNum].track.uri,
-              name: response.data.items[trackNum].track.name,
-              artists: response.data.items[trackNum].track.artists
-            };
-            finalTrackList.push(track);
-          }
-          if (response.data.next === null) {
-            console.log("No Next Link");
-            resolve(false); // resolve getData
-          } else {
-            console.log("More data to get...");
-            resolve(true); // resolve getData
-          }
-        }).catch(function (error) {
-          handleAxiosError(error)
-          reject(error);
-        });
-      });
-      getData.then((moreData) => {
-        if (moreData) {
-          offset += limit;
-          console.log("Recalling ", offset)
-          getDataFromApi()
-        } else {
-          console.log("Finished")
-          resolve(true); // resolve trackListPromise
-        }
-      });
-    }
-    getDataFromApi();
-  });
-
-  trackListPromise.then(() => {
-    console.log("Promised Resolved")
     res.send({
       playlistTrackList: finalTrackList
     });
 
     sampleDatabaseEvent("get-playlist-tracks endpoint passed").catch(() => {
-      console.log("Failed DB entry at get-playlist-tracks")
+      console.log("Failed DB entry at get-playlist-tracks");
     });
-  });
+  } catch (error) {
+    res.status(500).send({ error: "Failed to fetch playlist tracks" });
+  }
 });
 
 /**
