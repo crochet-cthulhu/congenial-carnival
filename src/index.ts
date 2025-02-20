@@ -332,7 +332,9 @@ async function fetchDataFromSpotify<T>(
         offset += limit;
       }
     } catch (error) {
-      handleAxiosError(error);
+      if (error instanceof Error) {
+        handleAxiosError(error);
+      }
       throw error;
     }
   }
@@ -366,6 +368,9 @@ expressApp.get('/get-user-playlists', async (req, res) => {
       console.log("Failed DB entry at get-user-playlists");
     });
   } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
     res.status(500).send({ error: "Failed to fetch user playlists" });
   }
 });
@@ -383,12 +388,19 @@ expressApp.get('/get-playlist-tracks', async (req, res) => {
 
   try {
     // Get playlist track list
-    await fetchDataFromSpotify<Types.trackData>(
+    await fetchDataFromSpotify<any>(
       `https://api.spotify.com/v1/playlists/${playlistID}/tracks`,
       access_token,
       limit,
       (items) => {
-        finalTrackList.push(...items);
+        for (const item of items) {
+          const track: Types.trackData = {
+            uri: item.track.uri,
+            name: item.track.name,
+            artists: item.track.artists
+          };
+          finalTrackList.push(track);
+        }
       }
     );
 
@@ -419,6 +431,9 @@ expressApp.get('/get-playlist-tracks', async (req, res) => {
       console.log("Failed DB entry at get-playlist-tracks");
     });
   } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
     res.status(500).send({ error: "Failed to fetch playlist tracks" });
   }
 });
