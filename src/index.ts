@@ -382,6 +382,7 @@ expressApp.get('/get-playlist-tracks', async (req, res) => {
   const finalTrackList: Types.trackData[] = [];
 
   try {
+    // Get playlist track list
     await fetchDataFromSpotify<Types.trackData>(
       `https://api.spotify.com/v1/playlists/${playlistID}/tracks`,
       access_token,
@@ -391,7 +392,26 @@ expressApp.get('/get-playlist-tracks', async (req, res) => {
       }
     );
 
+    // Get playlist additional data
+    const playlistDataResponse = await axios({
+      url: `https://api.spotify.com/v1/playlists/${playlistID}`,
+      method: 'get',
+      headers: {
+        'Authorization': `Bearer ${access_token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const playlistData: Types.playlistData = {
+      uri: playlistDataResponse.data.uri,
+      name: playlistDataResponse.data.name,
+      ownerName: playlistDataResponse.data.owner.display_name
+    };
+
     res.send({
+      playlistUri : playlistData.uri,
+      playlistName: playlistData.name,
+      playlistOwnerName: playlistData.ownerName,
       playlistTrackList: finalTrackList
     });
 
