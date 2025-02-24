@@ -388,7 +388,7 @@ expressApp.get('/get-playlist-tracks', async (req, res) => {
 
   try {
     // Get playlist track list
-    await fetchDataFromSpotify<any>(
+    await fetchDataFromSpotify<Types.trackParent>(
       `https://api.spotify.com/v1/playlists/${playlistID}/tracks`,
       access_token,
       limit,
@@ -421,7 +421,7 @@ expressApp.get('/get-playlist-tracks', async (req, res) => {
     };
 
     res.send({
-      playlistUri : playlistData.uri,
+      playlistUri: playlistData.uri,
       playlistName: playlistData.name,
       playlistOwnerName: playlistData.ownerName,
       playlistTrackList: finalTrackList
