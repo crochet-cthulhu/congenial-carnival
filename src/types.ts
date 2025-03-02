@@ -23,6 +23,7 @@ export type trackParent = {
  */
 export type playlistData = {
   uri: string;
+  id: string;
   name: string;
   ownerName: string;
 };

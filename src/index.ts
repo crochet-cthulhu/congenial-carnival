@@ -270,6 +270,7 @@ expressApp.get('/get-other-user-playlists', function (req, res) {
     for (let playlistNum = 0; playlistNum < numPlaylists; playlistNum++) {
       const playlist: Types.playlistData = {
         uri: response.data.items[playlistNum].uri,
+        id: response.data.items[playlistNum].id,
         name: response.data.items[playlistNum].name,
         ownerName: /*response.data.items[playlistNum].owner.??.display_name*/"UNCLEAR"
       };
@@ -416,6 +417,7 @@ expressApp.get('/get-playlist-tracks', async (req, res) => {
 
     const playlistData: Types.playlistData = {
       uri: playlistDataResponse.data.uri,
+      id: playlistDataResponse.data.id,
       name: playlistDataResponse.data.name,
       ownerName: playlistDataResponse.data.owner.display_name
     };
