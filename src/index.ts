@@ -11,7 +11,7 @@ import express from 'express';
 // TODO Re-add validator
 //import { query, validationResult } from 'express-validator'
 import * as Types from './types';
-import { addEventToDb } from './db';
+import { addEventToDb, addPlaylistToDb } from './db';
 
 // Express App Config
 const expressApp = express();
@@ -399,6 +399,7 @@ expressApp.get('/get-playlist-tracks', async (req, res) => {
     };
 
     res.send({
+      playlistId : playlistData.id,
       playlistUri: playlistData.uri,
       playlistName: playlistData.name,
       playlistOwnerName: playlistData.ownerName,
@@ -507,6 +508,33 @@ expressApp.post('/create-playlist', (req, res) => {
     // User ID Get Failed
     handleAxiosError(error);
   });
+});
+
+expressApp.post("/cache-playlist", async (req, res) => {
+  const { playlistData , trackList } = req.body;
+
+  if (!playlistData || !trackList) {
+    res.status(400).send({ error: "Missing Parameters" });
+    return;
+  }
+
+  addPlaylistToDb(playlistData, trackList).catch(() => {
+    console.log("Failed DB entry at cache-playlist")
+    addEventToDb("cache-playlist endpoint failed").catch(() => {
+      console.log("Failed DB event entry at cache-playlist failure")
+    }
+    );
+    res.status(500).send({ error: "Failed to cache playlist" });
+    return;
+  }
+  );
+
+  addEventToDb("cache-playlist endpoint passed").catch(() => {
+    console.log("Failed DB event entry at cache-playlist success")
+  }
+  );
+  res.send({ success: true });
+
 });
 
 /**
