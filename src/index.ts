@@ -2,17 +2,16 @@
  * This is the entry point for Congenial-Carnival, the API for the Spotify Playlist Manager app.
  * @module Congenial-Carnival-API
  */
+import dotenv from 'dotenv';
+dotenv.config();
+
 import axios, { AxiosError } from 'axios';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import express from 'express';
 // TODO Re-add validator
 //import { query, validationResult } from 'express-validator'
-import { MongoClient } from 'mongodb';
 import * as Types from './types';
-
-// Initialise Config
-dotenv.config();
+import { sampleDatabaseEvent } from './db';
 
 // Express App Config
 const expressApp = express();
@@ -21,8 +20,6 @@ expressApp.use(express.json());
 const stateKey = 'spotify_auth_state';
 const port = process.env.EXPRESS_SERVER_PORT || 5050;
 // const redirectURI = 'http://localhost:3000/app/callback';
-const dbConnectionString = process.env.MONGODB_CONNSTRING;
-const dbClient = new MongoClient(dbConnectionString);
 
 /**
  * Generate a random string of characters
@@ -64,27 +61,6 @@ function handleAxiosError(error: Error | AxiosError) {
   } else {
     // Stock Error - log and move on
     console.error(error);
-  }
-}
-
-/**
- * Creates a sample log in the database
- * @param event Log to add to db
- */
-async function sampleDatabaseEvent(event: string) {
-  try {
-    const database = dbClient.db('sample_db');
-    const events = database.collection('events');
-
-    const timestamp = new Date();
-
-    events.insertOne(
-      {
-        sampleEvent: event,
-        timestamp: timestamp.getTime()
-      });
-  } finally {
-    // TODO Close database connection?
   }
 }
 
