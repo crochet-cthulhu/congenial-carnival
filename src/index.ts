@@ -2,17 +2,16 @@
  * This is the entry point for Congenial-Carnival, the API for the Spotify Playlist Manager app.
  * @module Congenial-Carnival-API
  */
+import dotenv from 'dotenv';
+dotenv.config();
+
 import axios, { AxiosError } from 'axios';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import express from 'express';
 // TODO Re-add validator
 //import { query, validationResult } from 'express-validator'
-import { MongoClient } from 'mongodb';
 import * as Types from './types';
-
-// Initialise Config
-dotenv.config();
+import { addEventToDb, addPlaylistToDb } from './db';
 
 // Express App Config
 const expressApp = express();
@@ -21,8 +20,6 @@ expressApp.use(express.json());
 const stateKey = 'spotify_auth_state';
 const port = process.env.EXPRESS_SERVER_PORT || 5050;
 // const redirectURI = 'http://localhost:3000/app/callback';
-const dbConnectionString = process.env.MONGODB_CONNSTRING;
-const dbClient = new MongoClient(dbConnectionString);
 
 /**
  * Generate a random string of characters
@@ -64,27 +61,6 @@ function handleAxiosError(error: Error | AxiosError) {
   } else {
     // Stock Error - log and move on
     console.error(error);
-  }
-}
-
-/**
- * Creates a sample log in the database
- * @param event Log to add to db
- */
-async function sampleDatabaseEvent(event: string) {
-  try {
-    const database = dbClient.db('sample_db');
-    const events = database.collection('events');
-
-    const timestamp = new Date();
-
-    events.insertOne(
-      {
-        sampleEvent: event,
-        timestamp: timestamp.getTime()
-      });
-  } finally {
-    // TODO Close database connection?
   }
 }
 
@@ -188,7 +164,7 @@ expressApp.get('/auth/get-spotify-tokens', function (req, res) {
         refresh_token: response.data.refresh_token
       })
 
-      sampleDatabaseEvent("Callback endpoint passed").catch(() => {
+      addEventToDb("Callback endpoint passed").catch(() => {
         console.log("Failed DB entry at Callback")
       });
 
@@ -238,7 +214,7 @@ expressApp.get('/get-most-played', function (req, res) {
       trackData: trackList
     });
 
-    sampleDatabaseEvent("get-most-played endpoint passed with " + timeRange).catch(() => {
+    addEventToDb("get-most-played endpoint passed with " + timeRange).catch(() => {
       console.log("Failed DB entry at get-most-played " + timeRange)
     });
 
@@ -280,7 +256,7 @@ expressApp.get('/get-other-user-playlists', function (req, res) {
       playlistData: playlistList
     });
 
-    sampleDatabaseEvent("get-other-user-playlists endpoint passed with " + userID).catch(() => {
+    addEventToDb("get-other-user-playlists endpoint passed with " + userID).catch(() => {
       console.log("Failed DB entry at get-other-user-playlists " + userID)
     });
 
@@ -365,7 +341,7 @@ expressApp.get('/get-user-playlists', async (req, res) => {
       playlistData: finalPlaylistList
     });
 
-    sampleDatabaseEvent("get-user-playlists endpoint passed").catch(() => {
+    addEventToDb("get-user-playlists endpoint passed").catch(() => {
       console.log("Failed DB entry at get-user-playlists");
     });
   } catch (error) {
@@ -423,13 +399,14 @@ expressApp.get('/get-playlist-tracks', async (req, res) => {
     };
 
     res.send({
+      playlistId : playlistData.id,
       playlistUri: playlistData.uri,
       playlistName: playlistData.name,
       playlistOwnerName: playlistData.ownerName,
       playlistTrackList: finalTrackList
     });
 
-    sampleDatabaseEvent("get-playlist-tracks endpoint passed").catch(() => {
+    addEventToDb("get-playlist-tracks endpoint passed").catch(() => {
       console.log("Failed DB entry at get-playlist-tracks");
     });
   } catch (error) {
@@ -511,7 +488,7 @@ expressApp.post('/create-playlist', (req, res) => {
           playlistID: playlistID
         })
 
-        sampleDatabaseEvent("create-playlist endpoint passed for playlist " + playlistName).catch(() => {
+        addEventToDb("create-playlist endpoint passed for playlist " + playlistName).catch(() => {
           console.log("Failed DB entry at create-playlist " + playlistName)
         });
 
@@ -531,6 +508,33 @@ expressApp.post('/create-playlist', (req, res) => {
     // User ID Get Failed
     handleAxiosError(error);
   });
+});
+
+expressApp.post("/cache-playlist", async (req, res) => {
+  const { playlistData , trackList } = req.body;
+
+  if (!playlistData || !trackList) {
+    res.status(400).send({ error: "Missing Parameters" });
+    return;
+  }
+
+  addPlaylistToDb(playlistData, trackList).catch(() => {
+    console.log("Failed DB entry at cache-playlist")
+    addEventToDb("cache-playlist endpoint failed").catch(() => {
+      console.log("Failed DB event entry at cache-playlist failure")
+    }
+    );
+    res.status(500).send({ error: "Failed to cache playlist" });
+    return;
+  }
+  );
+
+  addEventToDb("cache-playlist endpoint passed").catch(() => {
+    console.log("Failed DB event entry at cache-playlist success")
+  }
+  );
+  res.send({ success: true });
+
 });
 
 /**
