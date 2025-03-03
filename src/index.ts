@@ -11,7 +11,7 @@ import express from 'express';
 // TODO Re-add validator
 //import { query, validationResult } from 'express-validator'
 import * as Types from './types';
-import { sampleDatabaseEvent } from './db';
+import { addEventToDb } from './db';
 
 // Express App Config
 const expressApp = express();
@@ -164,7 +164,7 @@ expressApp.get('/auth/get-spotify-tokens', function (req, res) {
         refresh_token: response.data.refresh_token
       })
 
-      sampleDatabaseEvent("Callback endpoint passed").catch(() => {
+      addEventToDb("Callback endpoint passed").catch(() => {
         console.log("Failed DB entry at Callback")
       });
 
@@ -214,7 +214,7 @@ expressApp.get('/get-most-played', function (req, res) {
       trackData: trackList
     });
 
-    sampleDatabaseEvent("get-most-played endpoint passed with " + timeRange).catch(() => {
+    addEventToDb("get-most-played endpoint passed with " + timeRange).catch(() => {
       console.log("Failed DB entry at get-most-played " + timeRange)
     });
 
@@ -256,7 +256,7 @@ expressApp.get('/get-other-user-playlists', function (req, res) {
       playlistData: playlistList
     });
 
-    sampleDatabaseEvent("get-other-user-playlists endpoint passed with " + userID).catch(() => {
+    addEventToDb("get-other-user-playlists endpoint passed with " + userID).catch(() => {
       console.log("Failed DB entry at get-other-user-playlists " + userID)
     });
 
@@ -341,7 +341,7 @@ expressApp.get('/get-user-playlists', async (req, res) => {
       playlistData: finalPlaylistList
     });
 
-    sampleDatabaseEvent("get-user-playlists endpoint passed").catch(() => {
+    addEventToDb("get-user-playlists endpoint passed").catch(() => {
       console.log("Failed DB entry at get-user-playlists");
     });
   } catch (error) {
@@ -405,7 +405,7 @@ expressApp.get('/get-playlist-tracks', async (req, res) => {
       playlistTrackList: finalTrackList
     });
 
-    sampleDatabaseEvent("get-playlist-tracks endpoint passed").catch(() => {
+    addEventToDb("get-playlist-tracks endpoint passed").catch(() => {
       console.log("Failed DB entry at get-playlist-tracks");
     });
   } catch (error) {
@@ -487,7 +487,7 @@ expressApp.post('/create-playlist', (req, res) => {
           playlistID: playlistID
         })
 
-        sampleDatabaseEvent("create-playlist endpoint passed for playlist " + playlistName).catch(() => {
+        addEventToDb("create-playlist endpoint passed for playlist " + playlistName).catch(() => {
           console.log("Failed DB entry at create-playlist " + playlistName)
         });
 
