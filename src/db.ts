@@ -5,7 +5,8 @@
 import { MongoClient } from 'mongodb';
 import Event from './models/event';
 import Playlist from './models/playlist';
-import * as Types from './types';
+// import * as Types from './types';
+import * as SpotifyTypes from './spotifyTypes';
 
 const dbConnectionString = process.env.MONGODB_CONNSTRING;
 const dbClient = new MongoClient(dbConnectionString);
@@ -28,11 +29,11 @@ export async function addEventToDb(event: string) {
   }
 }
 
-export async function addPlaylistToDb(playlistData: Types.playlistData, tracks: Types.trackParent[]) {
+export async function addPlaylistToDb(playlistData: SpotifyTypes.Playlist) {
   try {
     const database = dbClient.db(dbName);
     const playlists = database.collection('playlists');
-    const playlist = new Playlist(playlistData, tracks);
+    const playlist = new Playlist(playlistData);
     playlists.updateOne({ 'playlist.id': playlistData.id }, { $set: playlist }, { upsert: true });
   } catch (error) {
     console.error(error);
@@ -54,7 +55,7 @@ export async function getPlaylistTracksFromDb(playlistId: string) {
   try {
     const database = dbClient.db(dbName);
     const playlists = database.collection<Playlist>('playlists');
-    const result = await playlists.findOne({ 'playlist.id': playlistId });
+    const result = await playlists.findOne({ 'id': playlistId });
     return result;
   } catch (error) {
     console.error(error);

@@ -31,5 +31,8 @@ export default [{
         sourceType: "module",
     },
 
-    rules: {},
+    rules: {
+        // "no-unused-vars": ["error", { "varsIgnorePattern": "^_" }],
+        "@typescript-eslint/no-unused-vars": ["error", { "varsIgnorePattern": "^_" }]
+    },
 }];

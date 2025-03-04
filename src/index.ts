@@ -10,7 +10,8 @@ import cors from 'cors';
 import express from 'express';
 // TODO Re-add validator
 //import { query, validationResult } from 'express-validator'
-import * as Types from './types';
+// import * as Types from './types';
+import * as SpotifyTypes from './spotifyTypes';
 import { addEventToDb, addPlaylistToDb, getPlaylistsFromDb, getPlaylistTracksFromDb } from './db';
 
 // Express App Config
@@ -200,16 +201,7 @@ expressApp.get('/get-most-played', function (req, res) {
     }
   }).then(function (response) {
     console.log("GET Response ", response.status);
-    const numTracks: number = response.data.items.length;
-    const trackList: Types.trackData[] = [];
-    for (let trackNum = 0; trackNum < numTracks; trackNum++) {
-      const track: Types.trackData = {
-        uri: response.data.items[trackNum].uri,
-        name: response.data.items[trackNum].name,
-        artists: response.data.items[trackNum].artists
-      };
-      trackList.push(track);
-    }
+    const trackList: SpotifyTypes.Track[] = response.data.items;
     res.send({
       trackData: trackList
     });
@@ -241,17 +233,8 @@ expressApp.get('/get-other-user-playlists', function (req, res) {
     }
   }).then(function (response) {
     console.log("GET Response ", response.status);
-    const numPlaylists: number = response.data.items.length;
-    const playlistList: Types.playlistData[] = [];
-    for (let playlistNum = 0; playlistNum < numPlaylists; playlistNum++) {
-      const playlist: Types.playlistData = {
-        uri: response.data.items[playlistNum].uri,
-        id: response.data.items[playlistNum].id,
-        name: response.data.items[playlistNum].name,
-        ownerName: /*response.data.items[playlistNum].owner.??.display_name*/"UNCLEAR"
-      };
-      playlistList.push(playlist);
-    }
+    // const playlistList: SpotifyTypes.Playlist[] = (({ tracks, ...o }) => o)(response.data.items);
+    const { tracks : _tracks, ...playlistList } = response.data.items;
     res.send({
       playlistData: playlistList
     });
@@ -325,15 +308,19 @@ expressApp.get('/get-user-playlists', async (req, res) => {
 
   const access_token: string = req.query.access_token as string;
   const limit = 50;
-  const finalPlaylistList: Types.playlistData[] = [];
+  const finalPlaylistList: SpotifyTypes.Playlist[] = [];
 
   try {
-    await fetchDataFromSpotify<Types.playlistData>(
+    await fetchDataFromSpotify<SpotifyTypes.Playlist>(
       'https://api.spotify.com/v1/me/playlists',
       access_token,
       limit,
       (items) => {
-        finalPlaylistList.push(...items);
+        items.map((item) => {
+          // finalPlaylistList.push( (({tracks, ...o}) => o)(item) );
+          const {tracks: _tracks, ...restOfItem} = item
+          finalPlaylistList.push(restOfItem)
+        });
       }
     );
 
@@ -361,23 +348,18 @@ expressApp.get('/get-playlist-tracks', async (req, res) => {
   const access_token: string = req.query.access_token as string;
   const playlistID: string = req.query.playlistID as string;
   const limit = 50;
-  const finalTrackList: Types.trackData[] = [];
+  const finalTrackList: SpotifyTypes.Track[] = [];
 
   try {
     // Get playlist track list
-    await fetchDataFromSpotify<Types.trackParent>(
+    await fetchDataFromSpotify<SpotifyTypes.Track>(
       `https://api.spotify.com/v1/playlists/${playlistID}/tracks`,
       access_token,
       limit,
       (items) => {
-        for (const item of items) {
-          const track: Types.trackData = {
-            uri: item.track.uri,
-            name: item.track.name,
-            artists: item.track.artists
-          };
-          finalTrackList.push(track);
-        }
+        items.map((item) => {
+          finalTrackList.push(item);
+        });
       }
     );
 
@@ -391,20 +373,11 @@ expressApp.get('/get-playlist-tracks', async (req, res) => {
       }
     });
 
-    const playlistData: Types.playlistData = {
-      uri: playlistDataResponse.data.uri,
-      id: playlistDataResponse.data.id,
-      name: playlistDataResponse.data.name,
-      ownerName: playlistDataResponse.data.owner.display_name
-    };
+    // const playlistData: SpotifyTypes.Playlist = (({ tracks, ...o }) => o)(playlistDataResponse.data.items);
+    const { tracks: _tracks, ...playlistData } = playlistDataResponse.data.items;
+    playlistData.tracks = finalTrackList;
 
-    res.send({
-      playlistId : playlistData.id,
-      playlistUri: playlistData.uri,
-      playlistName: playlistData.name,
-      playlistOwnerName: playlistData.ownerName,
-      playlistTrackList: finalTrackList
-    });
+    res.send(playlistData);
 
     addEventToDb("get-playlist-tracks endpoint passed").catch(() => {
       console.log("Failed DB entry at get-playlist-tracks");
@@ -511,14 +484,14 @@ expressApp.post('/create-playlist', (req, res) => {
 });
 
 expressApp.post("/cache-playlist", async (req, res) => {
-  const { playlistData , trackList } = req.body;
+  const { playlistData } = req.body;
 
-  if (!playlistData || !trackList) {
+  if (!playlistData) {
     res.status(400).send({ error: "Missing Parameters" });
     return;
   }
 
-  addPlaylistToDb(playlistData, trackList).catch(() => {
+  addPlaylistToDb(playlistData).catch(() => {
     console.log("Failed DB entry at cache-playlist")
     addEventToDb("cache-playlist endpoint failed").catch(() => {
       console.log("Failed DB event entry at cache-playlist failure")
@@ -546,19 +519,8 @@ expressApp.get("/get-cached-playlist-tracks", async (req, res) => {
   const playlistId = req.query.playlistID as string;
   console.log("Getting cached playlist tracks for playlist ID ", playlistId);
   const playlistResult = await getPlaylistTracksFromDb(playlistId);
-  const playlist = playlistResult ? {
-    playlistId : playlistResult.playlist.id,
-    playlistName : playlistResult.playlist.name,
-    playlistTrackList : playlistResult.tracks.map((track) => ({
-      uri: track.track.uri,
-      name: track.track.name,
-      artists: track.track.artists.map((artist) => ({
-        name: artist
-      }))
-    }))
-  } : null;
-  console.log("Playlist result: ", playlist)
-  res.send(playlist);
+  console.log("Playlist result: ", playlistResult)
+  res.send(playlistResult);
 });
 
 /**
