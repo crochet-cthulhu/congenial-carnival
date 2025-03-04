@@ -11,7 +11,7 @@ import express from 'express';
 // TODO Re-add validator
 //import { query, validationResult } from 'express-validator'
 import * as Types from './types';
-import { addEventToDb, addPlaylistToDb, getPlaylistsFromDb } from './db';
+import { addEventToDb, addPlaylistToDb, getPlaylistsFromDb, getPlaylistTracksFromDb } from './db';
 
 // Express App Config
 const expressApp = express();
@@ -540,6 +540,25 @@ expressApp.post("/cache-playlist", async (req, res) => {
 expressApp.get("/get-cached-playlists", async (req, res) => {
   const playlists = await getPlaylistsFromDb();
   res.send(playlists);
+});
+
+expressApp.get("/get-cached-playlist-tracks", async (req, res) => {
+  const playlistId = req.query.playlistID as string;
+  console.log("Getting cached playlist tracks for playlist ID ", playlistId);
+  const playlistResult = await getPlaylistTracksFromDb(playlistId);
+  const playlist = playlistResult ? {
+    playlistId : playlistResult.playlist.id,
+    playlistName : playlistResult.playlist.name,
+    playlistTrackList : playlistResult.tracks.map((track) => ({
+      uri: track.track.uri,
+      name: track.track.name,
+      artists: track.track.artists.map((artist) => ({
+        name: artist
+      }))
+    }))
+  } : null;
+  console.log("Playlist result: ", playlist)
+  res.send(playlist);
 });
 
 /**

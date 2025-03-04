@@ -49,3 +49,14 @@ export async function getPlaylistsFromDb() {
     console.error(error);
   }
 }
+
+export async function getPlaylistTracksFromDb(playlistId: string) {
+  try {
+    const database = dbClient.db(dbName);
+    const playlists = database.collection<Playlist>('playlists');
+    const result = await playlists.findOne({ 'playlist.id': playlistId });
+    return result;
+  } catch (error) {
+    console.error(error);
+  }
+}
