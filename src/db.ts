@@ -38,3 +38,14 @@ export async function addPlaylistToDb(playlistData: Types.playlistData, tracks: 
     console.error(error);
   }
 }
+
+export async function getPlaylistsFromDb() {
+  try {
+    const database = dbClient.db(dbName);
+    const playlists = database.collection<Playlist>('playlists');
+    const result = await playlists.find({}, {projection : {tracks : 0}}).toArray() as Playlist[];
+    return result;
+  } catch (error) {
+    console.error(error);
+  }
+}

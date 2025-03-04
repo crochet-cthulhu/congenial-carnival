@@ -11,7 +11,7 @@ import express from 'express';
 // TODO Re-add validator
 //import { query, validationResult } from 'express-validator'
 import * as Types from './types';
-import { addEventToDb, addPlaylistToDb } from './db';
+import { addEventToDb, addPlaylistToDb, getPlaylistsFromDb } from './db';
 
 // Express App Config
 const expressApp = express();
@@ -535,6 +535,11 @@ expressApp.post("/cache-playlist", async (req, res) => {
   );
   res.send({ success: true });
 
+});
+
+expressApp.get("/get-cached-playlists", async (req, res) => {
+  const playlists = await getPlaylistsFromDb();
+  res.send(playlists);
 });
 
 /**
