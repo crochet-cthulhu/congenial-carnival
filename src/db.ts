@@ -33,8 +33,7 @@ export async function addPlaylistToDb(playlistData: SpotifyTypes.Playlist) {
   try {
     const database = dbClient.db(dbName);
     const playlists = database.collection('playlists');
-    const playlist = new Playlist(playlistData);
-    playlists.updateOne({ 'playlist.id': playlistData.id }, { $set: playlist }, { upsert: true });
+    playlists.updateOne({ 'playlist.id': playlistData.id }, { $set: playlistData }, { upsert: true });
   } catch (error) {
     console.error(error);
   }
