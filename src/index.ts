@@ -10,16 +10,16 @@ import cors from 'cors';
 import express from 'express';
 // TODO Re-add validator
 //import { query, validationResult } from 'express-validator'
-import * as Types from './types';
-import { addEventToDb, addPlaylistToDb } from './db';
+import * as SpotifyTypes from './spotifyTypes';
+import { addEventToDb, addPlaylistToDb, getPlaylistsFromDb, getPlaylistTracksFromDb } from './db';
 
 // Express App Config
 const expressApp = express();
 expressApp.use(cors());
-expressApp.use(express.json());
+expressApp.use(express.json({ "limit": "50mb" }));
+expressApp.use(express.urlencoded({ extended: true }));
 const stateKey = 'spotify_auth_state';
 const port = process.env.EXPRESS_SERVER_PORT || 5050;
-// const redirectURI = 'http://localhost:3000/app/callback';
 
 /**
  * Generate a random string of characters
@@ -78,6 +78,7 @@ expressApp.get('/api/placeholder', cors(), (req, res) => {
 
 /**
  * Express API Endpoint /auth/get-spotify-login-url
+ * Used for user authentication with Spotify
  */
 expressApp.get('/auth/get-spotify-login-url', function (req, res) {
   console.log('/auth/spotify - Auth request received')
@@ -116,6 +117,7 @@ expressApp.get('/auth/get-spotify-login-url', function (req, res) {
 
 /**
  * Express API Endpoint /auth/get-spotify-tokens
+ * Used for getting Spotify Access and Refresh Tokens
  */
 expressApp.get('/auth/get-spotify-tokens', function (req, res) {
   // Request refresh and access tokens after checking the state parameter
@@ -177,6 +179,7 @@ expressApp.get('/auth/get-spotify-tokens', function (req, res) {
 
 /**
  * Express API Endpoint /get-most-played
+ * Gets the user's most played songs according to the Spotify API's /top/tracks endpoint
  */
 expressApp.get('/get-most-played', function (req, res) {
   console.log("Requesting songs");
@@ -200,16 +203,7 @@ expressApp.get('/get-most-played', function (req, res) {
     }
   }).then(function (response) {
     console.log("GET Response ", response.status);
-    const numTracks: number = response.data.items.length;
-    const trackList: Types.trackData[] = [];
-    for (let trackNum = 0; trackNum < numTracks; trackNum++) {
-      const track: Types.trackData = {
-        uri: response.data.items[trackNum].uri,
-        name: response.data.items[trackNum].name,
-        artists: response.data.items[trackNum].artists
-      };
-      trackList.push(track);
-    }
+    const trackList: SpotifyTypes.Track[] = response.data.items;
     res.send({
       trackData: trackList
     });
@@ -224,7 +218,8 @@ expressApp.get('/get-most-played', function (req, res) {
 });
 
 /**
- * Get the playlists of another user
+ * Express API Endpoint /get-other-user-playlists
+ * Gets the playlists of the specified user
  */
 expressApp.get('/get-other-user-playlists', function (req, res) {
   console.log("Getting playlists of user")
@@ -241,17 +236,7 @@ expressApp.get('/get-other-user-playlists', function (req, res) {
     }
   }).then(function (response) {
     console.log("GET Response ", response.status);
-    const numPlaylists: number = response.data.items.length;
-    const playlistList: Types.playlistData[] = [];
-    for (let playlistNum = 0; playlistNum < numPlaylists; playlistNum++) {
-      const playlist: Types.playlistData = {
-        uri: response.data.items[playlistNum].uri,
-        id: response.data.items[playlistNum].id,
-        name: response.data.items[playlistNum].name,
-        ownerName: /*response.data.items[playlistNum].owner.??.display_name*/"UNCLEAR"
-      };
-      playlistList.push(playlist);
-    }
+    const { tracks: _tracks, ...playlistList } = response.data.items;
     res.send({
       playlistData: playlistList
     });
@@ -318,6 +303,7 @@ async function fetchDataFromSpotify<T>(
 }
 
 /**
+ * Express API Endpoint /get-user-playlists
  * Get current user's playlists
  */
 expressApp.get('/get-user-playlists', async (req, res) => {
@@ -325,15 +311,18 @@ expressApp.get('/get-user-playlists', async (req, res) => {
 
   const access_token: string = req.query.access_token as string;
   const limit = 50;
-  const finalPlaylistList: Types.playlistData[] = [];
+  const finalPlaylistList: SpotifyTypes.Playlist[] = [];
 
   try {
-    await fetchDataFromSpotify<Types.playlistData>(
+    await fetchDataFromSpotify<SpotifyTypes.Playlist>(
       'https://api.spotify.com/v1/me/playlists',
       access_token,
       limit,
       (items) => {
-        finalPlaylistList.push(...items);
+        items.map((item) => {
+          const { tracks: _tracks, ...restOfItem } = item
+          finalPlaylistList.push(restOfItem)
+        });
       }
     );
 
@@ -354,6 +343,7 @@ expressApp.get('/get-user-playlists', async (req, res) => {
 
 /**
  * Express API Endpoint /get-playlist-tracks
+ * Get the full details of a playlist, including its full track list
  */
 expressApp.get('/get-playlist-tracks', async (req, res) => {
   console.log("Getting playlist tracks");
@@ -361,23 +351,18 @@ expressApp.get('/get-playlist-tracks', async (req, res) => {
   const access_token: string = req.query.access_token as string;
   const playlistID: string = req.query.playlistID as string;
   const limit = 50;
-  const finalTrackList: Types.trackData[] = [];
+  const finalTrackList: SpotifyTypes.Track[] = [];
 
   try {
     // Get playlist track list
-    await fetchDataFromSpotify<Types.trackParent>(
+    await fetchDataFromSpotify<SpotifyTypes.Track>(
       `https://api.spotify.com/v1/playlists/${playlistID}/tracks`,
       access_token,
       limit,
       (items) => {
-        for (const item of items) {
-          const track: Types.trackData = {
-            uri: item.track.uri,
-            name: item.track.name,
-            artists: item.track.artists
-          };
-          finalTrackList.push(track);
-        }
+        items.map((item) => {
+          finalTrackList.push(item);
+        });
       }
     );
 
@@ -391,20 +376,10 @@ expressApp.get('/get-playlist-tracks', async (req, res) => {
       }
     });
 
-    const playlistData: Types.playlistData = {
-      uri: playlistDataResponse.data.uri,
-      id: playlistDataResponse.data.id,
-      name: playlistDataResponse.data.name,
-      ownerName: playlistDataResponse.data.owner.display_name
-    };
+    const { tracks: _tracks, ...playlistData } = playlistDataResponse.data;
+    playlistData.tracks = finalTrackList;
 
-    res.send({
-      playlistId : playlistData.id,
-      playlistUri: playlistData.uri,
-      playlistName: playlistData.name,
-      playlistOwnerName: playlistData.ownerName,
-      playlistTrackList: finalTrackList
-    });
+    res.send(playlistData);
 
     addEventToDb("get-playlist-tracks endpoint passed").catch(() => {
       console.log("Failed DB entry at get-playlist-tracks");
@@ -419,6 +394,7 @@ expressApp.get('/get-playlist-tracks', async (req, res) => {
 
 /**
  * Express API Endpoint /create-playlist
+ * Create a new playlist with the given name, description and track list
  */
 expressApp.post('/create-playlist', (req, res) => {
   // TODO complete
@@ -510,15 +486,19 @@ expressApp.post('/create-playlist', (req, res) => {
   });
 });
 
+/**
+ * Express API Endpoint /cache-playlist
+ * Cache a playlist in the database
+ */
 expressApp.post("/cache-playlist", async (req, res) => {
-  const { playlistData , trackList } = req.body;
+  const playlistData: SpotifyTypes.Playlist = req.body;
 
-  if (!playlistData || !trackList) {
+  if (!playlistData) {
     res.status(400).send({ error: "Missing Parameters" });
     return;
   }
 
-  addPlaylistToDb(playlistData, trackList).catch(() => {
+  addPlaylistToDb(playlistData).catch(() => {
     console.log("Failed DB entry at cache-playlist")
     addEventToDb("cache-playlist endpoint failed").catch(() => {
       console.log("Failed DB event entry at cache-playlist failure")
@@ -535,6 +515,27 @@ expressApp.post("/cache-playlist", async (req, res) => {
   );
   res.send({ success: true });
 
+});
+
+/**
+ * Express API Endpoint /get-cached-playlists
+ * Get list of cached playlists from the database
+ */
+expressApp.get("/get-cached-playlists", async (req, res) => {
+  const playlists = await getPlaylistsFromDb();
+  res.send(playlists);
+});
+
+/**
+ * Express API Endpoint /get-cached-playlist-tracks
+ * Get full details of a cached playlist from the database, including its tracklist
+ */
+expressApp.get("/get-cached-playlist-tracks", async (req, res) => {
+  const playlistId = req.query.playlistID as string;
+  console.log("Getting cached playlist tracks for playlist ID ", playlistId);
+  const playlistResult = await getPlaylistTracksFromDb(playlistId);
+  console.log("Playlist result: ", playlistResult)
+  res.send(playlistResult);
 });
 
 /**

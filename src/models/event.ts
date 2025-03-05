@@ -1,3 +1,3 @@
 export default class Event {
-    constructor(public event: string, public timestamp: number) {}
+  constructor(public event: string, public timestamp: number) { }
 }
