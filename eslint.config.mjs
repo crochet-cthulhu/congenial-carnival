@@ -9,30 +9,29 @@ import { FlatCompat } from "@eslint/eslintrc";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const compat = new FlatCompat({
-    baseDirectory: __dirname,
-    recommendedConfig: js.configs.recommended,
-    allConfig: js.configs.all
+  baseDirectory: __dirname,
+  recommendedConfig: js.configs.recommended,
+  allConfig: js.configs.all
 });
 
 export default [{
-    ignores: ["**/node_modules", "**/dist"],
+  ignores: ["**/node_modules", "**/dist"],
 }, ...compat.extends("eslint:recommended", "plugin:@typescript-eslint/recommended"), {
-    plugins: {
-        "@typescript-eslint": typescriptEslint,
+  plugins: {
+    "@typescript-eslint": typescriptEslint,
+  },
+
+  languageOptions: {
+    globals: {
+      ...globals.browser,
     },
 
-    languageOptions: {
-        globals: {
-            ...globals.browser,
-        },
+    parser: tsParser,
+    ecmaVersion: 12,
+    sourceType: "module",
+  },
 
-        parser: tsParser,
-        ecmaVersion: 12,
-        sourceType: "module",
-    },
-
-    rules: {
-        // "no-unused-vars": ["error", { "varsIgnorePattern": "^_" }],
-        "@typescript-eslint/no-unused-vars": ["error", { "varsIgnorePattern": "^_" }]
-    },
+  rules: {
+    "@typescript-eslint/no-unused-vars": ["error", { "varsIgnorePattern": "^_" }]
+  },
 }];

@@ -24,7 +24,7 @@ export async function addEventToDb(event: string) {
     const database = dbClient.db(dbName);
     const events = database.collection(dbEventsCollectionName);
 
-    const eventToInsert : Event = new Event(event, new Date().getTime());
+    const eventToInsert: Event = new Event(event, new Date().getTime());
     events.insertOne(eventToInsert);
   } catch (error) {
     console.error(error);
@@ -61,7 +61,7 @@ export async function getPlaylistsFromDb() {
   try {
     const database = dbClient.db(dbName);
     const playlists = database.collection<SpotifyTypes.Playlist>('playlists');
-    const result = await playlists.find({}, {projection : {tracks : 0}}).toArray() as SpotifyTypes.Playlist[];
+    const result = await playlists.find({}, { projection: { tracks: 0 } }).toArray() as SpotifyTypes.Playlist[];
     return result;
   } catch (error) {
     console.error(error);

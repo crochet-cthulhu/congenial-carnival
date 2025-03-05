@@ -16,7 +16,7 @@ import { addEventToDb, addPlaylistToDb, getPlaylistsFromDb, getPlaylistTracksFro
 // Express App Config
 const expressApp = express();
 expressApp.use(cors());
-expressApp.use(express.json({"limit": "50mb"}));
+expressApp.use(express.json({ "limit": "50mb" }));
 expressApp.use(express.urlencoded({ extended: true }));
 const stateKey = 'spotify_auth_state';
 const port = process.env.EXPRESS_SERVER_PORT || 5050;
@@ -236,7 +236,7 @@ expressApp.get('/get-other-user-playlists', function (req, res) {
     }
   }).then(function (response) {
     console.log("GET Response ", response.status);
-    const { tracks : _tracks, ...playlistList } = response.data.items;
+    const { tracks: _tracks, ...playlistList } = response.data.items;
     res.send({
       playlistData: playlistList
     });
@@ -320,7 +320,7 @@ expressApp.get('/get-user-playlists', async (req, res) => {
       limit,
       (items) => {
         items.map((item) => {
-          const {tracks: _tracks, ...restOfItem} = item
+          const { tracks: _tracks, ...restOfItem } = item
           finalPlaylistList.push(restOfItem)
         });
       }
@@ -491,7 +491,7 @@ expressApp.post('/create-playlist', (req, res) => {
  * Cache a playlist in the database
  */
 expressApp.post("/cache-playlist", async (req, res) => {
-  const playlistData : SpotifyTypes.Playlist = req.body;
+  const playlistData: SpotifyTypes.Playlist = req.body;
 
   if (!playlistData) {
     res.status(400).send({ error: "Missing Parameters" });
