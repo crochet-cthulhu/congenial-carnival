@@ -11,7 +11,8 @@ import express from 'express';
 // TODO Re-add validator
 //import { query, validationResult } from 'express-validator'
 import * as SpotifyTypes from './spotifyTypes';
-import { addEventToDb, addPlaylistToDb, getPlaylistsFromDb, getPlaylistTracksFromDb } from './db';
+import { addEventToDb, addPlaylistToDb, getPlaylistsFromDb, getPlaylistTracksFromDb, getManagementFromDb, addManagementToDb } from './db';
+import Management from './models/management';
 
 // Express App Config
 const expressApp = express();
@@ -396,10 +397,11 @@ expressApp.get('/get-playlist-tracks', async (req, res) => {
  * Express API Endpoint /create-playlist
  * Create a new playlist with the given name, description and track list
  */
-expressApp.post('/create-playlist', (req, res) => {
+expressApp.post('/create-playlist', async (req, res) => {
   // TODO complete
   console.log("Reached create-playlist via POST");
-  const { name: playlistName, description: playlistDescription, access_token, songList } = req.body;
+  const { name: playlistName, description: playlistDescription, access_token, songList, management } = req.body;
+
 
   if (!playlistName || !access_token || !songList) {
     res.status(400).send({ error: "Missing Parameters" });
@@ -422,64 +424,120 @@ expressApp.post('/create-playlist', (req, res) => {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer ' + access_token
     }
-  }).then(function (response) {
+  }).then(async function (response) {
     console.log("GET Response ", response.status);
     const userID: string = response.data.id;
     console.log("Obtained User ID: " + userID);
-
-    axios({
-      url: 'https://api.spotify.com/v1/users/' + userID + '/playlists',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + access_token
-      },
-      method: 'post',
-      data: {
-        name: playlistName,
-        public: false,
-        collaborative: false,
-        description: playlistDescription
-      }
-    }).then(function (response) {
-      console.log("POST Response ", response.status);
-      playlistID = response.data.id
-
-      // Add songs to this new playlist
-      console.log("Playlist ID: " + playlistID)
-
+    // If we're updating a playlist that already exists, find its ID from the management db and update it instead of creating a new playlist
+    const managementData = await getManagementFromDb(userID, management) as Management;
+    console.log(managementData)
+    if (managementData && 'playlistId' in managementData) {
+      console.log("Playlist is managed")
+      // This playlist already exists. Replace the songs in the destination playlist instead of making a new playlist.
+      // First, do a PUT request to replace the contents of the playlist with the first 100 of the requested songs.
       axios({
-        url: 'https://api.spotify.com/v1/playlists/' + playlistID + '/tracks?uris=' + songList,
-        method: "post",
+        url: `https://api.spotify.com/v1/playlists/${managementData.playlistId}/tracks`,
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
           'Authorization': 'Bearer ' + access_token
+        },
+        method: 'put',
+        data: {
+          uris: songList.length > 100 ? songList.slice(0, 100) : songList
         }
-      }).then(function (response) {
-        console.log("POST Response: ", response.status);
-        console.log("Successfully added songs to Playlist " + playlistID)
-        res.json({
-          successful: true,
-          playlistID: playlistID
-        })
-
-        addEventToDb("create-playlist endpoint passed for playlist " + playlistName).catch(() => {
-          console.log("Failed DB entry at create-playlist " + playlistName)
-        });
+      }).then(function () {
+        console.log("Successfully updated managed playlist " + managementData.playlistId);
+        // Then, add the remaining songs to the end of the playlist.
+        if (songList.length > 100) {
+          axios({
+            url: `https://api.spotify.com/v1/playlists/${managementData.playlistId}/tracks`,
+            method: "post",
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + access_token
+            },
+            data: {
+              "uris": songList.slice(100)
+            }
+          }).catch(function (error) {
+            handleAxiosError(error);
+            res.status(500).send({ error: "Failed to add remaining songs to managed playlist" });
+          })
+        }
 
       }).catch(function (error) {
-        // Playlist Update Failed
         handleAxiosError(error);
-        res.json({
-          successful: false,
-          playlistID: playlistID
+        res.status(500).send({ error: "Failed to update managed playlist" });
+      })
+      res.json({
+        successful: true,
+        created: false,
+        playlistID: managementData.playlistId
+      })
+    } else {
+      // This playlist isn't currently manageed. Create a new one, then manage it.
+      console.log("Playlist is not managed")
+      axios({
+        url: 'https://api.spotify.com/v1/users/' + userID + '/playlists',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + access_token
+        },
+        method: 'post',
+        data: {
+          name: playlistName,
+          public: false,
+          collaborative: false,
+          description: playlistDescription
+        }
+      }).then(function (response) {
+        console.log("POST Response ", response.status);
+        playlistID = response.data.id
+
+        // Add songs to this new playlist
+        console.log("Playlist ID: " + playlistID)
+
+        axios({
+          url: 'https://api.spotify.com/v1/playlists/' + playlistID + '/tracks?uris=' + songList,
+          method: "post",
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + access_token
+          }
+        }).then(function (response) {
+          console.log("POST Response: ", response.status);
+          console.log("Successfully added songs to Playlist " + playlistID)
+          // Now, add it to the management database so that it can be managed in the future
+          addManagementToDb(playlistID, userID, management).catch(() => {
+            console.warn("Failed to add playlist to management database");
+          });
+          res.json({
+            successful: true,
+            created: true,
+            playlistID: playlistID
+          })
+
+          addEventToDb("create-playlist endpoint passed for playlist " + playlistName).catch(() => {
+            console.log("Failed DB entry at create-playlist " + playlistName)
+          });
+
+        }).catch(function (error) {
+          // Playlist Update Failed
+          handleAxiosError(error);
+          res.status(500).json({
+            successful: false,
+            playlistID: playlistID
+          });
         });
+      }).catch(function (error) {
+        // Playlist Creation Failed
+        handleAxiosError(error);
       });
-    }).catch(function (error) {
-      // Playlist Creation Failed
-      handleAxiosError(error);
-    });
+    }
   }).catch(function (error) {
     // User ID Get Failed
     handleAxiosError(error);

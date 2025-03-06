@@ -5,6 +5,7 @@
 import { MongoClient } from 'mongodb';
 import Event from './models/event';
 import * as SpotifyTypes from './spotifyTypes';
+import Management, { ManagementData } from './models/management';
 
 const dbConnectionString = process.env.MONGODB_CONNSTRING;
 const dbClient = new MongoClient(dbConnectionString);
@@ -82,6 +83,27 @@ export async function getPlaylistTracksFromDb(playlistId: string) {
     const database = dbClient.db(dbName);
     const playlists = database.collection<SpotifyTypes.Playlist>('playlists');
     const result = await playlists.findOne({ 'id': playlistId });
+    return result;
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+export async function addManagementToDb(playlistId: string, owner: string, managementData: ManagementData) {
+  try {
+    const database = dbClient.db(dbName);
+    const management = database.collection('management');
+    management.updateOne({ 'playlistId': playlistId }, { $set: { 'playlistId': playlistId, 'owner': owner, 'management': managementData } }, { upsert: true });
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+export async function getManagementFromDb(owner: string, managementData: ManagementData) {
+  try {
+    const database = dbClient.db(dbName);
+    const management = database.collection<Management>('management');
+    const result = await management.findOne({ 'owner': owner, 'management': managementData });
     return result;
   } catch (error) {
     console.error(error);
