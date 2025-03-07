@@ -109,3 +109,17 @@ export async function getManagementFromDb(owner: string, managementData: Managem
     console.error(error);
   }
 }
+
+export async function getJointPlaylistTracksFromDb(playlistIds: string[]) {
+  const finalTrackList: string[] = []
+  for (const playlistId in playlistIds) {
+    const playlist: SpotifyTypes.Playlist = await getPlaylistTracksFromDb(playlistId);
+    playlist.tracks.forEach((track: SpotifyTypes.Track) => {
+      if (track.track.uri && finalTrackList.indexOf(track.track.uri) === -1) {
+        finalTrackList.push(track.track.uri)
+      }
+    })
+  }
+
+  return finalTrackList;
+}
