@@ -398,7 +398,43 @@ type CreatePlaylistResponse = {
   error?: string;
 }
 
-async function createOrUpdatePlaylist(playlistName: string, playlistDescription: string, access_token: string, songList: string[], management: ManagementData): Promise<CreatePlaylistResponse> {
+async function addTracksToPlaylist(playlistID: string, access_token: string, songList: string[]): Promise<boolean> {
+  let currentStartIndex: number = 0;
+  const maxSongsPerRequest: number = 100;
+
+  while (currentStartIndex < songList.length) {
+    const currentSongList: string[] = songList.slice(currentStartIndex, currentStartIndex + maxSongsPerRequest);
+    try {
+      await axios({
+        url: `https://api.spotify.com/v1/playlists/${playlistID}/tracks`,
+        method: "post",
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + access_token
+        },
+        data: {
+          "uris": currentSongList
+        }
+      })
+      currentStartIndex += maxSongsPerRequest;
+    } catch (error) {
+      if (error instanceof Error) {
+        handleAxiosError(error);
+        return Promise.resolve(false);
+      }
+    }
+  }
+  return Promise.resolve(true);
+}
+
+async function createOrUpdatePlaylist(
+  playlistName: string,
+  playlistDescription: string,
+  access_token: string,
+  songList: string[],
+  management: ManagementData
+): Promise<CreatePlaylistResponse> {
   console.log("Name: ", playlistName);
   console.log("Description: ", playlistDescription);
   console.log("Access Token: ", access_token);
@@ -406,37 +442,35 @@ async function createOrUpdatePlaylist(playlistName: string, playlistDescription:
   console.log("Management: ", management);
 
   if (!playlistName || !playlistDescription || !access_token || songList.length === 0) {
-    return Promise.resolve({
+    return {
       successful: false,
       error: "Insufficient Input: " +
-        playlistName ? "" : "playlistName " +
-          playlistDescription ? "" : "playlistDescription " +
-            access_token ? "" : "access_token " +
-              songList ? "" : "songList"
-    });
+        (playlistName ? "" : "playlistName ") +
+        (playlistDescription ? "" : "playlistDescription ") +
+        (access_token ? "" : "access_token ") +
+        (songList ? "" : "songList")
+    };
   }
 
-  let playlistID = "UNPOPULATED";
+  try {
+    const userResponse = await axios({
+      url: 'https://api.spotify.com/v1/me',
+      method: 'get',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + access_token
+      }
+    });
 
-  // Get User's ID
-  axios({
-    url: 'https://api.spotify.com/v1/me',
-    method: 'get',
-    headers: {
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + access_token
-    }
-  }).then(async function (response) {
-    const userID: string = response.data.id;
+    const userID: string = userResponse.data.id;
     console.log("Obtained User ID: " + userID);
-    // If we're updating a playlist that already exists, find its ID from the management db and update it instead of creating a new playlist
+
     const managementData = await getManagementFromDb(userID, management) as Management;
     if (managementData && 'playlistId' in managementData) {
       console.log("Playlist is managed, found ID", managementData.playlistId);
-      // This playlist already exists. Replace the songs in the destination playlist instead of making a new playlist.
-      // First, do a PUT request to replace the contents of the playlist with the first 100 of the requested songs.
-      axios({
+
+      await axios({
         url: `https://api.spotify.com/v1/playlists/${managementData.playlistId}/tracks`,
         headers: {
           'Accept': 'application/json',
@@ -447,40 +481,22 @@ async function createOrUpdatePlaylist(playlistName: string, playlistDescription:
         data: {
           uris: songList.length > 100 ? songList.slice(0, 100) : songList
         }
-      }).then(async function () {
-        console.log("Successfully updated managed playlist " + managementData.playlistId);
-        // Then, add the remaining songs to the end of the playlist.
-        if (songList.length > 100) {
-          axios({
-            url: `https://api.spotify.com/v1/playlists/${managementData.playlistId}/tracks`,
-            method: "post",
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer ' + access_token
-            },
-            data: {
-              "uris": songList.slice(100)
-            }
-          }).catch(function (error) {
-            handleAxiosError(error);
-            return Promise.resolve({ successful: false, error: "Failed to add remaining songs to managed playlist" });
-          });
-        }
-
-      }).catch(function (error) {
-        handleAxiosError(error);
-        return Promise.resolve({ successful: false, error: "Failed to update managed playlist" });
       });
-      return Promise.resolve({
+
+      if (!await addTracksToPlaylist(managementData.playlistId, access_token, songList.slice(100))) {
+        return { successful: false, error: "Failed to add remaining songs to managed playlist" };
+      }
+
+      console.log("Successfully updated managed playlist " + managementData.playlistId);
+      return {
         successful: true,
         created: false,
         playlistID: managementData.playlistId
-      });
+      };
     } else {
-      // This playlist isn't currently manageed. Create a new one, then manage it.
       console.log("Playlist is not managed");
-      axios({
+
+      const createResponse = await axios({
         url: 'https://api.spotify.com/v1/users/' + userID + '/playlists',
         headers: {
           'Accept': 'application/json',
@@ -494,65 +510,35 @@ async function createOrUpdatePlaylist(playlistName: string, playlistDescription:
           collaborative: false,
           description: playlistDescription
         }
-      }).then(async function (response) {
-        playlistID = response.data.id;
-        console.log("Created Playlist with ID: " + playlistID);
-
-        // Add songs to this new playlist
-        axios({
-          url: `https://api.spotify.com/v1/playlists/${playlistID}/tracks`,
-          method: "post",
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + access_token
-          },
-          data: {
-            "uris": songList
-          }
-        }).then(async function (response) {
-          if (response.status !== 201) {
-            console.log("Failed to add songs to playlist " + playlistID);
-          }
-          console.log("Successfully added songs to Playlist " + playlistID);
-          // Now, add it to the management database so that it can be managed in the future
-          addManagementToDb(playlistID, userID, management).catch(() => {
-            console.warn("Failed to add playlist to management database");
-          });
-          addEventToDb("create-playlist endpoint passed for playlist " + playlistName).catch(() => {
-            console.log("Failed DB entry at create-playlist " + playlistName);
-          });
-          return Promise.resolve({
-            successful: true,
-            created: true,
-            playlistID: playlistID
-          });
-        }).catch(function (error) {
-          // Playlist Update Failed
-          handleAxiosError(error);
-          return Promise.resolve({
-            successful: false,
-            error: "Failed to add songs to playlist",
-            playlistID: playlistID
-          });
-        });
-      }).catch(function (error) {
-        // Playlist Creation Failed
-        handleAxiosError(error);
-        return Promise.resolve({
-          successful: false,
-          error: "Failed to create playlist"
-        });
       });
+
+      const playlistID = createResponse.data.id;
+      console.log("Created Playlist with ID: " + playlistID);
+
+      if (!await addTracksToPlaylist(playlistID, access_token, songList)) {
+        return { successful: false, error: "Failed to add remaining songs to managed playlist" };
+      }
+
+      console.log("Successfully added songs to Playlist " + playlistID);
+
+      await addManagementToDb(playlistID, userID, management);
+      await addEventToDb("create-playlist endpoint passed for playlist " + playlistName);
+
+      return {
+        successful: true,
+        created: true,
+        playlistID: playlistID
+      };
     }
-  }).catch(function (error) {
-    // User ID Get Failed
-    handleAxiosError(error);
-    return Promise.resolve({
+  } catch (error) {
+    if (error instanceof Error) {
+      handleAxiosError(error);
+    }
+    return {
       successful: false,
-      error: "Failed to get user data"
-    });
-  });
+      error: "Failed to create or update playlist"
+    };
+  }
 }
 
 /**
@@ -591,6 +577,7 @@ expressApp.post("/create-joint-playlist", async (req, res) => {
   }
 
   createOrUpdatePlaylist(playlistName, playlistDescription, access_token, songList, management).then((result) => {
+    console.log("Joint playlist creation result: ", result);
     if (result.successful) {
       res.json(result);
     }
