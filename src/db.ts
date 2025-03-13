@@ -109,3 +109,21 @@ export async function getManagementFromDb(owner: string, managementData: Managem
     console.error(error);
   }
 }
+
+export async function getJointPlaylistTracksFromDb(playlistIds: string[]) {
+  const finalTrackList: string[] = []
+  for (const playlistId of playlistIds) {
+    const playlist: SpotifyTypes.Playlist = await getPlaylistTracksFromDb(playlistId);
+    if (playlist) {
+      playlist.tracks.forEach((track: SpotifyTypes.Track) => {
+        if (track.track.uri && finalTrackList.indexOf(track.track.uri) === -1) {
+          finalTrackList.push(track.track.uri)
+        }
+      })
+    } else {
+      console.error("Unable to retrieve playlist from db: ", playlistId);
+    }
+  }
+
+  return finalTrackList;
+}
