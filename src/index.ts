@@ -438,7 +438,7 @@ async function createOrUpdatePlaylist(
   console.log("Name: ", playlistName);
   console.log("Description: ", playlistDescription);
   console.log("Access Token: ", access_token);
-  console.log("Song List: ", songList);
+  console.log("Song List Size: ", songList.length);
   console.log("Management: ", management);
 
   if (!playlistName || !playlistDescription || !access_token || songList.length === 0) {
@@ -546,22 +546,23 @@ async function createOrUpdatePlaylist(
  * Create a new playlist with the given name, description and track list
  */
 expressApp.post('/create-playlist', async (req, res) => {
-  console.log("Reached create-playlist via POST");
   const { name: playlistName, description: playlistDescription, access_token, songList, management } = req.body;
 
 
-  if (!playlistName || !access_token || !songList) {
+  if (!songList) {
     res.status(400).send({ error: "Missing Parameters" });
     return;
   }
 
-  const result = await createOrUpdatePlaylist(playlistName, playlistDescription, access_token, songList, management);
-  if (!result.successful) {
-    console.log("Failed to create playlist: ", result.error);
-    res.status(500).send({ error: result.error });
-  } else {
-    res.json(result)
-  }
+  createOrUpdatePlaylist(playlistName, playlistDescription, access_token, songList, management).then((result) => {
+    if (result.successful) {
+      res.json(result)
+    } else {
+      res.status(500).send({ error: result.error });
+    }
+  }).catch((error) => {
+    res.status(500).send({ error: error });
+  })
 });
 
 expressApp.post("/create-joint-playlist", async (req, res) => {
@@ -577,7 +578,6 @@ expressApp.post("/create-joint-playlist", async (req, res) => {
   }
 
   createOrUpdatePlaylist(playlistName, playlistDescription, access_token, songList, management).then((result) => {
-    console.log("Joint playlist creation result: ", result);
     if (result.successful) {
       res.json(result);
     }
@@ -587,14 +587,6 @@ expressApp.post("/create-joint-playlist", async (req, res) => {
   }).catch((error) => {
     res.status(500).send({ error: error });
   })
-
-  //const result = await createOrUpdatePlaylist(playlistName, playlistDescription, access_token, songList, management);
-  //if (!result.successful) {
-  //  console.log("Failed to create joint playlist: ", result.error);
-  //  res.status(500).send({ error: result.error });
-  //} else {
-  //  res.json(result)
-  //}
 });
 
 
