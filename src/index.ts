@@ -95,6 +95,7 @@ expressApp.get('/auth/get-spotify-login-url', function (req, res) {
   const scope = 'user-read-private \
    user-read-email \
    user-top-read \
+   user-library-read \
    playlist-read-private \
    playlist-modify-private \
    ';
@@ -390,6 +391,43 @@ expressApp.get('/get-playlist-tracks', async (req, res) => {
     res.status(500).send({ error: "Failed to fetch playlist tracks" });
   }
 });
+
+expressApp.get('/get-liked-tracks', async (req, res) => {
+  const access_token: string = req.query.access_token as string;
+  const limit: number = 50;
+  const finalTrackList: SpotifyTypes.Track[] = [];
+
+  try {
+    await fetchDataFromSpotify<SpotifyTypes.Track>(
+      `https://api.spotify.com/v1/me/tracks`,
+      access_token,
+      limit,
+      (items: SpotifyTypes.Track[]) => {
+        items.map((item) => {
+          finalTrackList.push(item);
+        })
+      }
+    );
+
+    console.log("Track List Size: ", finalTrackList.length)
+    if (finalTrackList.length) {
+      console.log("Track List Sample: ", finalTrackList[0])
+    }
+
+    res.send({
+      playlistData: finalTrackList
+    });
+
+    addEventToDb("get-liked-tracks endpoint passed").catch(() => {
+      console.log("Failed DB entry at get-liked-tracks");
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    res.status(500).send({ error: "Failed to fetch liked tracks" });
+  }
+})
 
 type CreatePlaylistResponse = {
   successful: boolean;
