@@ -177,6 +177,28 @@ expressApp.get('/auth/get-spotify-tokens', function (req, res) {
   }
 });
 
+expressApp.get('/get-user', async function (req, res) {
+  console.log("Reached get-user endpoint")
+  const access_token: string = req.query.access_token as string
+  try {
+
+
+    const response = await axios({
+      url: 'https://api.spotify.com/v1/me',
+      method: 'get',
+      headers: {
+        'Authorization': 'Bearer ' + access_token
+      }
+    })
+    res.json(response.data)
+  } catch (error) {
+    if (error instanceof Error) {
+      handleAxiosError(error)
+    }
+    res.status(500).send();
+  }
+})
+
 /**
  * Express API Endpoint /get-most-played
  * Gets the user's most played songs according to the Spotify API's /top/tracks endpoint
