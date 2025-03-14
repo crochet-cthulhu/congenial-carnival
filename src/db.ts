@@ -33,6 +33,28 @@ export async function addEventToDb(event: string) {
 }
 
 /**
+ * Minifies a track object to only include the necessary fields
+ * @param track Input track
+ * @returns Minified track
+ */
+function MinifyTrack(track: SpotifyTypes.Track): SpotifyTypes.Track {
+  return {
+    track: {
+      artists: track.track.artists.map((artist) => {
+        return {
+          name: artist.name,
+          id: artist.id,
+          uri: artist.uri
+        }
+      }),
+      uri: track.track.uri,
+      name: track.track.name,
+      id: track.track.id,
+    }
+  }
+}
+
+/**
  * Add a playlist to the database
  * 
  * @async
@@ -43,8 +65,15 @@ export async function addEventToDb(event: string) {
 export async function addPlaylistToDb(playlistData: SpotifyTypes.Playlist) {
   try {
     const database = dbClient.db(dbName);
-    const playlists = database.collection('playlists');
-    playlists.updateOne({ 'playlist.id': playlistData.id }, { $set: playlistData }, { upsert: true });
+    const playlists = database.collection<SpotifyTypes.Playlist>('playlists');
+
+    // Separate Tracks from Playlist Meta Data so that Tracks can be inserted separately.
+    const { tracks: _tracks, ...playlistMetaData } = playlistData;
+    const realPlaylistData: SpotifyTypes.Playlist = {
+      ...playlistMetaData,
+      tracks: playlistData.tracks.map(MinifyTrack)
+    }
+    await playlists.updateOne({ 'id': playlistData.id }, { $set: realPlaylistData }, { upsert: true });
   } catch (error) {
     console.error(error);
   }
