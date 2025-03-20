@@ -13,7 +13,7 @@ import express from 'express';
 import * as SpotifyTypes from './spotifyTypes';
 import { addEventToDb, addPlaylistToDb, getPlaylistsFromDb, getPlaylistTracksFromDb, getJointPlaylistTracksFromDb } from './db';
 import { JointPlaylistManagementData } from './models/management';
-import { generateRandomString, handleAxiosError, fetchDataFromSpotify, createOrUpdatePlaylist } from './util';
+import { generateRandomString, handleAxiosError, fetchDataFromSpotify, createOrUpdatePlaylist, getPlaylistTracks } from './util';
 
 // Express App Config
 const expressApp = express();
@@ -280,44 +280,11 @@ expressApp.get('/get-playlist-tracks', async (req, res) => {
 
   const access_token: string = req.query.access_token as string;
   const playlistID: string = req.query.playlistID as string;
-  const limit = 50;
-  const finalTrackList: SpotifyTypes.Track[] = [];
-
   try {
-    // Get playlist track list
-    await fetchDataFromSpotify<SpotifyTypes.Track>(
-      `https://api.spotify.com/v1/playlists/${playlistID}/tracks`,
-      access_token,
-      limit,
-      (items) => {
-        items.map((item) => {
-          finalTrackList.push(item);
-        });
-      }
-    );
-
-    // Get playlist additional data
-    const playlistDataResponse = await axios({
-      url: `https://api.spotify.com/v1/playlists/${playlistID}`,
-      method: 'get',
-      headers: {
-        'Authorization': `Bearer ${access_token}`,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    const { tracks: _tracks, ...playlistData } = playlistDataResponse.data;
-    playlistData.tracks = finalTrackList;
-
+    const playlistData: SpotifyTypes.Playlist = await getPlaylistTracks(playlistID, access_token);
     res.send(playlistData);
-
-    addEventToDb("get-playlist-tracks endpoint passed").catch(() => {
-      console.log("Failed DB entry at get-playlist-tracks");
-    });
   } catch (error) {
-    if (error instanceof Error) {
-      console.error(error.message);
-    }
+    console.error(error);
     res.status(500).send({ error: "Failed to fetch playlist tracks" });
   }
 });
@@ -469,3 +436,5 @@ expressApp.get('*', (req) => {
 
 expressApp.listen(port);
 console.log("Express Server Listening on Port " + port);
+
+

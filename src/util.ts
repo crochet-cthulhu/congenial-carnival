@@ -6,6 +6,7 @@
 import axios, { AxiosError } from "axios";
 import Management, { ManagementData } from "./models/management";
 import { addEventToDb, addManagementToDb, getManagementFromDb } from "./db";
+import * as SpotifyTypes from './spotifyTypes';
 
 /**
  * Generate a random string of characters
@@ -100,6 +101,49 @@ export async function fetchDataFromSpotify<T>(
   }
 }
 
+export async function getPlaylistTracks(playlistID: string, access_token: string): Promise<SpotifyTypes.Playlist> {
+  const limit = 50;
+  const finalTrackList: SpotifyTypes.Track[] = [];
+
+  try {
+    // Get playlist track list
+    await fetchDataFromSpotify<SpotifyTypes.Track>(
+      `https://api.spotify.com/v1/playlists/${playlistID}/tracks`,
+      access_token,
+      limit,
+      (items) => {
+        items.map((item) => {
+          finalTrackList.push(item);
+        });
+      }
+    );
+
+    // Get playlist additional data
+    const playlistDataResponse = await axios({
+      url: `https://api.spotify.com/v1/playlists/${playlistID}`,
+      method: 'get',
+      headers: {
+        'Authorization': `Bearer ${access_token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const { tracks: _tracks, ...playlistData } = playlistDataResponse.data;
+    playlistData.tracks = finalTrackList;
+
+    addEventToDb("get-playlist-tracks endpoint passed").catch(() => {
+      console.log("Failed DB entry at get-playlist-tracks");
+    });
+
+    return Promise.resolve(playlistData);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    }
+    return Promise.reject("Failed to fetch playlist tracks");
+  }
+}
+
 export type CreatePlaylistResponse = {
   successful: boolean;
   created?: boolean;
@@ -113,6 +157,14 @@ export async function addOrRemovePlaylistTracks(playlistID: string, access_token
 
   while (currentStartIndex < songList.length) {
     const currentSongList: string[] = songList.slice(currentStartIndex, currentStartIndex + maxSongsPerRequest);
+    const data = addTracks ? {
+      "uris": currentSongList
+    } : {
+      "tracks": currentSongList.map((uri) => {
+        return { "uri": uri }
+      })
+    }
+
     try {
       await axios({
         url: `https://api.spotify.com/v1/playlists/${playlistID}/tracks`,
@@ -122,27 +174,17 @@ export async function addOrRemovePlaylistTracks(playlistID: string, access_token
           'Content-Type': 'application/json',
           'Authorization': 'Bearer ' + access_token
         },
-        data: {
-          "uris": currentSongList
-        }
+        data: data
       })
       currentStartIndex += maxSongsPerRequest;
     } catch (error) {
       if (error instanceof Error) {
         handleAxiosError(error);
-        return Promise.resolve(false);
+        return Promise.reject(false);
       }
     }
   }
   return Promise.resolve(true);
-}
-
-export async function updateJointPlaylist(destinationPlaylistId: string, access_token: string, songList: string[]) {
-  // Get Track List from Destination Playlist.
-
-  // Compare Tracks in Song List and Tracks in Destination Playlist.
-  // If a track is in Song List but not Destination Playlist, add it.
-  // If vice versa, remove it.
 }
 
 export async function updateManagedPlaylist(
@@ -150,30 +192,33 @@ export async function updateManagedPlaylist(
   songList: string[],
   managementData: Management
 ): Promise<CreatePlaylistResponse> {
-
-  await axios({
-    url: `https://api.spotify.com/v1/playlists/${managementData.playlistId}/tracks`,
-    headers: {
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + access_token
-    },
-    method: 'put',
-    data: {
-      uris: songList.length > 100 ? songList.slice(0, 100) : songList
+  try {
+    const playlist: SpotifyTypes.Playlist = await getPlaylistTracks(managementData.playlistId, access_token);
+    const tracksToRemove = playlist.tracks.filter((track) => !songList.includes(track.track.uri)).map((track) => track.track.uri);
+    const tracksToAdd = songList.filter((track) => !playlist.tracks.map((track) => track.track.uri).includes(track));
+    console.log("Tracks to Add: ", tracksToAdd);
+    console.log("Tracks to Remove: ", tracksToRemove);
+    if (tracksToAdd.length !== 0) {
+      console.log("Adding Tracks: ", tracksToAdd.reduce((acc, track) => acc + track + ", ", ""));
+      await addOrRemovePlaylistTracks(managementData.playlistId, access_token, tracksToAdd, true);
     }
-  });
+    if (tracksToRemove.length !== 0) {
+      console.log("Removing Tracks: ", tracksToRemove.reduce((acc, track) => acc + track + ", ", ""));
+      await addOrRemovePlaylistTracks(managementData.playlistId, access_token, tracksToRemove, false);
+    }
+    return Promise.resolve({
+      successful: true,
+      created: false,
+      playlistID: managementData.playlistId
+    });
 
-  if (!await addOrRemovePlaylistTracks(managementData.playlistId, access_token, songList.slice(100))) {
-    return { successful: false, error: "Failed to add remaining songs to managed playlist" };
+  } catch (error) {
+    console.error(error);
+    return Promise.reject({
+      successful: false,
+      error: "Failed to update managed playlist"
+    });
   }
-
-  console.log("Successfully updated managed playlist " + managementData.playlistId);
-  return {
-    successful: true,
-    created: false,
-    playlistID: managementData.playlistId
-  };
 }
 
 export async function createNewPlaylist(
