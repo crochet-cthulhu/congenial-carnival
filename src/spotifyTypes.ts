@@ -3,13 +3,13 @@
  */
 
 export type Artist = {
-  external_urls: {
+  external_urls?: {
     spotify: string
   }
-  href: string
+  href?: string
   id: string
   name: string
-  type: string
+  type?: string
   uri: string
 }
 
@@ -36,26 +36,26 @@ export type Album = {
 }
 
 export type TrackObject = {
-  album: Album
+  album?: Album
   artists: Artist[]
-  available_markets: string[]
-  disc_number: number
-  duration_ms: number
-  explicit: boolean
-  external_ids: {
+  available_markets?: string[]
+  disc_number?: number
+  duration_ms?: number
+  explicit?: boolean
+  external_ids?: {
     isrc: string
   }
-  external_urls: {
+  external_urls?: {
     spotify: string
   }
-  href: string
+  href?: string
   id: string
-  is_local: boolean
+  is_local?: boolean
   name: string
-  popularity: number
-  preview_url: string
-  track_number: number
-  type: string
+  popularity?: number
+  preview_url?: string
+  track_number?: number
+  type?: string
   uri: string
 }
 
