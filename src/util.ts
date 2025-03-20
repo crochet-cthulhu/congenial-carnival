@@ -107,7 +107,7 @@ export type CreatePlaylistResponse = {
   error?: string;
 }
 
-export async function addTracksToPlaylist(playlistID: string, access_token: string, songList: string[]): Promise<boolean> {
+export async function addOrRemovePlaylistTracks(playlistID: string, access_token: string, songList: string[], addTracks: boolean = false): Promise<boolean> {
   let currentStartIndex: number = 0;
   const maxSongsPerRequest: number = 100;
 
@@ -116,7 +116,7 @@ export async function addTracksToPlaylist(playlistID: string, access_token: stri
     try {
       await axios({
         url: `https://api.spotify.com/v1/playlists/${playlistID}/tracks`,
-        method: "post",
+        method: addTracks ? "post" : "delete",
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
@@ -135,6 +135,88 @@ export async function addTracksToPlaylist(playlistID: string, access_token: stri
     }
   }
   return Promise.resolve(true);
+}
+
+export async function updateJointPlaylist(destinationPlaylistId: string, access_token: string, songList: string[]) {
+  // Get Track List from Destination Playlist.
+
+  // Compare Tracks in Song List and Tracks in Destination Playlist.
+  // If a track is in Song List but not Destination Playlist, add it.
+  // If vice versa, remove it.
+}
+
+export async function updateManagedPlaylist(
+  access_token: string,
+  songList: string[],
+  managementData: Management
+): Promise<CreatePlaylistResponse> {
+
+  await axios({
+    url: `https://api.spotify.com/v1/playlists/${managementData.playlistId}/tracks`,
+    headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + access_token
+    },
+    method: 'put',
+    data: {
+      uris: songList.length > 100 ? songList.slice(0, 100) : songList
+    }
+  });
+
+  if (!await addOrRemovePlaylistTracks(managementData.playlistId, access_token, songList.slice(100))) {
+    return { successful: false, error: "Failed to add remaining songs to managed playlist" };
+  }
+
+  console.log("Successfully updated managed playlist " + managementData.playlistId);
+  return {
+    successful: true,
+    created: false,
+    playlistID: managementData.playlistId
+  };
+}
+
+export async function createNewPlaylist(
+  userID: string,
+  playlistName: string,
+  playlistDescription: string,
+  access_token: string,
+  songList: string[],
+  management: ManagementData
+): Promise<CreatePlaylistResponse> {
+  const createResponse = await axios({
+    url: 'https://api.spotify.com/v1/users/' + userID + '/playlists',
+    headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + access_token
+    },
+    method: 'post',
+    data: {
+      name: playlistName,
+      public: false,
+      collaborative: false,
+      description: playlistDescription
+    }
+  });
+
+  const playlistID = createResponse.data.id;
+  console.log("Created Playlist with ID: " + playlistID);
+
+  if (!await addOrRemovePlaylistTracks(playlistID, access_token, songList)) {
+    return { successful: false, error: "Failed to add remaining songs to managed playlist" };
+  }
+
+  console.log("Successfully added songs to Playlist " + playlistID);
+
+  await addManagementToDb(playlistID, userID, management);
+  await addEventToDb("create-playlist endpoint passed for playlist " + playlistName);
+
+  return {
+    successful: true,
+    created: true,
+    playlistID: playlistID
+  };
 }
 
 export async function createOrUpdatePlaylist(
@@ -178,66 +260,10 @@ export async function createOrUpdatePlaylist(
     const managementData = await getManagementFromDb(userID, management) as Management;
     if (managementData && 'playlistId' in managementData) {
       console.log("Playlist is managed, found ID", managementData.playlistId);
-
-      await axios({
-        url: `https://api.spotify.com/v1/playlists/${managementData.playlistId}/tracks`,
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + access_token
-        },
-        method: 'put',
-        data: {
-          uris: songList.length > 100 ? songList.slice(0, 100) : songList
-        }
-      });
-
-      if (!await addTracksToPlaylist(managementData.playlistId, access_token, songList.slice(100))) {
-        return { successful: false, error: "Failed to add remaining songs to managed playlist" };
-      }
-
-      console.log("Successfully updated managed playlist " + managementData.playlistId);
-      return {
-        successful: true,
-        created: false,
-        playlistID: managementData.playlistId
-      };
+      return updateManagedPlaylist(access_token, songList, managementData);
     } else {
       console.log("Playlist is not managed");
-
-      const createResponse = await axios({
-        url: 'https://api.spotify.com/v1/users/' + userID + '/playlists',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + access_token
-        },
-        method: 'post',
-        data: {
-          name: playlistName,
-          public: false,
-          collaborative: false,
-          description: playlistDescription
-        }
-      });
-
-      const playlistID = createResponse.data.id;
-      console.log("Created Playlist with ID: " + playlistID);
-
-      if (!await addTracksToPlaylist(playlistID, access_token, songList)) {
-        return { successful: false, error: "Failed to add remaining songs to managed playlist" };
-      }
-
-      console.log("Successfully added songs to Playlist " + playlistID);
-
-      await addManagementToDb(playlistID, userID, management);
-      await addEventToDb("create-playlist endpoint passed for playlist " + playlistName);
-
-      return {
-        successful: true,
-        created: true,
-        playlistID: playlistID
-      };
+      return createNewPlaylist(userID, playlistName, playlistDescription, access_token, songList, management);
     }
   } catch (error) {
     if (error instanceof Error) {
