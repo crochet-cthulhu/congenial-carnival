@@ -9,6 +9,32 @@ import { addEventToDb, addManagementToDb, getManagementFromDb } from "./db";
 import * as SpotifyTypes from './spotifyTypes';
 
 /**
+ * Every type of managed playlist
+ */
+enum ManagementType {
+  MostPlayed = "mostPlayed",
+  Joint = "joint",
+}
+
+/**
+ * Every way that a playlist can be updated
+ */
+enum PlaylistUpdateMethod {
+  Overwrite,
+  Modify,
+}
+
+/**
+ * How each type of managed playlist should be updated
+ */
+const ManagementUpdateMethod = new Map<string, PlaylistUpdateMethod>([
+  [ManagementType.MostPlayed, PlaylistUpdateMethod.Overwrite],
+  [ManagementType.Joint, PlaylistUpdateMethod.Modify]
+])
+
+// Maximum number of tracks that can be submitted to the Spotify API at once
+const maxTracksPerRequest: number = 100;
+/**
  * Generate a random string of characters
  * @param length the length of the random string
  * @returns A random string of characters
@@ -153,10 +179,9 @@ export type CreatePlaylistResponse = {
 
 export async function addOrRemovePlaylistTracks(playlistID: string, access_token: string, songList: string[], addTracks: boolean = false): Promise<boolean> {
   let currentStartIndex: number = 0;
-  const maxSongsPerRequest: number = 100;
 
   while (currentStartIndex < songList.length) {
-    const currentSongList: string[] = songList.slice(currentStartIndex, currentStartIndex + maxSongsPerRequest);
+    const currentSongList: string[] = songList.slice(currentStartIndex, currentStartIndex + maxTracksPerRequest);
     const data = addTracks ? {
       "uris": currentSongList
     } : {
@@ -176,7 +201,7 @@ export async function addOrRemovePlaylistTracks(playlistID: string, access_token
         },
         data: data
       })
-      currentStartIndex += maxSongsPerRequest;
+      currentStartIndex += maxTracksPerRequest;
     } catch (error) {
       if (error instanceof Error) {
         handleAxiosError(error);
@@ -190,33 +215,75 @@ export async function addOrRemovePlaylistTracks(playlistID: string, access_token
 export async function updateManagedPlaylist(
   access_token: string,
   songList: string[],
-  managementData: Management
+  managementData: Management,
 ): Promise<CreatePlaylistResponse> {
-  try {
-    const playlist: SpotifyTypes.Playlist = await getPlaylistTracks(managementData.playlistId, access_token);
-    const tracksToRemove = playlist.tracks.filter((track) => !songList.includes(track.track.uri)).map((track) => track.track.uri);
-    const tracksToAdd = songList.filter((track) => !playlist.tracks.map((track) => track.track.uri).includes(track));
-    console.log("Tracks to Add: ", tracksToAdd);
-    console.log("Tracks to Remove: ", tracksToRemove);
-    if (tracksToAdd.length !== 0) {
-      console.log("Adding Tracks: ", tracksToAdd.reduce((acc, track) => acc + track + ", ", ""));
-      await addOrRemovePlaylistTracks(managementData.playlistId, access_token, tracksToAdd, true);
-    }
-    if (tracksToRemove.length !== 0) {
-      console.log("Removing Tracks: ", tracksToRemove.reduce((acc, track) => acc + track + ", ", ""));
-      await addOrRemovePlaylistTracks(managementData.playlistId, access_token, tracksToRemove, false);
-    }
-    return Promise.resolve({
-      successful: true,
-      created: false,
-      playlistID: managementData.playlistId
-    });
+  if (ManagementUpdateMethod.has(managementData.management.type)) {
+    try {
+      switch (ManagementUpdateMethod.get(managementData.management.type)) {
+        case PlaylistUpdateMethod.Overwrite: {
+          // Replace tracks in the playlist with the given list of tracks
+          await axios({
+            url: `https://api.spotify.com/v1/playlists/${managementData.playlistId}/tracks`,
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + access_token
+            },
+            method: 'put',
+            data: {
+              uris: songList.length > maxTracksPerRequest ? songList.slice(0, maxTracksPerRequest) : songList
+            }
+          });
+          if (songList.length > maxTracksPerRequest) {
+            await addOrRemovePlaylistTracks(managementData.playlistId, access_token, songList.slice(maxTracksPerRequest), true);
+          }
+          return Promise.resolve({
+            successful: true,
+            created: false,
+            playlistID: managementData.playlistId
+          });
+        }
+        case PlaylistUpdateMethod.Modify: {
+          // Only add or remove the delta
+          const playlist: SpotifyTypes.Playlist = await getPlaylistTracks(managementData.playlistId, access_token);
+          const tracksToRemove = playlist.tracks.filter((track) => !songList.includes(track.track.uri)).map((track) => track.track.uri);
+          const tracksToAdd = songList.filter((track) => !playlist.tracks.map((track) => track.track.uri).includes(track));
+          console.log("Tracks to Add: ", tracksToAdd);
+          console.log("Tracks to Remove: ", tracksToRemove);
+          if (tracksToAdd.length !== 0) {
+            console.log("Adding Tracks: ", tracksToAdd.reduce((acc, track) => acc + track + ", ", ""));
+            await addOrRemovePlaylistTracks(managementData.playlistId, access_token, tracksToAdd, true);
+          }
+          if (tracksToRemove.length !== 0) {
+            console.log("Removing Tracks: ", tracksToRemove.reduce((acc, track) => acc + track + ", ", ""));
+            await addOrRemovePlaylistTracks(managementData.playlistId, access_token, tracksToRemove, false);
+          }
+          return Promise.resolve({
+            successful: true,
+            created: false,
+            playlistID: managementData.playlistId
+          });
+        }
+        default: {
+          return Promise.resolve({
+            successful: false,
+            error: "Management Type does not support Playlist Update"
+          });
+        }
+      }
 
-  } catch (error) {
-    console.error(error);
-    return Promise.reject({
+
+    } catch (error) {
+      console.error(error);
+      return Promise.reject({
+        successful: false,
+        error: "Failed to update managed playlist"
+      });
+    }
+  } else {
+    return Promise.resolve({
       successful: false,
-      error: "Failed to update managed playlist"
+      error: "Management Type not recognized"
     });
   }
 }
